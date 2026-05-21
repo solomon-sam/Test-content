@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Brand Composition Engine - Test</title>
+    <style>
+        body { font-family: monospace; padding: 20px; background: #1a1a2e; color: #eee; }
+        .pass { color: #4ade80; }
+        .fail { color: #ef4444; }
+        .info { color: #60a5fa; }
+        .test-result { margin: 5px 0; padding: 8px; background: #16213e; border-radius: 4px; }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+</head>
+<body>
+    <h1>Brand Composition Engine - Unit Tests</h1>
+    <div id="results"></div>
+    <canvas id="test-canvas" style="display:none;"></canvas>
+
+    <script src="app/presets/asset-presets.js"></script>
+    <script src="app/engine/grid-system.js"></script>
+    <script src="app/engine/ai-analysis.js"></script>
+    <script src="app/engine/composition-engine.js"></script>
+    <script src="app/engine/validation-rules.js"></script>
+    <script src="app/engine/export-system.js"></script>
+    <script src="app/components/canvas-manager.js"></script>
+    <script src="app/components/layers-panel.js"></script>
+    <script src="app/components/ui-controls.js"></script>
+    <script src="app/components/demo-helper.js"></script>
+
+    <script>
+        const results = document.getElementById('results');
+        let passCount = 0;
+        let failCount = 0;
+
+        function test(name, fn) {
+            try {
+                fn();
+                passCount++;
+                results.innerHTML += `<div class="test-result pass">✓ ${name}</div>`;
+            } catch (e) {
+                failCount++;
+                results.innerHTML += `<div class="test-result fail">✗ ${name}: ${e.message}</div>`;
+            }
+        }
+
+        function assert(condition, message) {
+            if (!condition) throw new Error(message || 'Assertion failed');
+        }
+
+        // Run tests
+        setTimeout(() => {
+            results.innerHTML += '<div class="test-result info">Running tests...</div>';
+
+            // Test 1: AssetPresets
+            test('AssetPresets loads correctly', () => {
+                assert(typeof AssetPresets !== 'undefined', 'AssetPresets not defined');
+                assert(AssetPresets.categories.social !== undefined, 'Social category missing');
+                assert(AssetPresets.getPreset('ig-square') !== null, 'Instagram preset not found');
+            });
+
+            // Test 2: GridSystem
+            test('GridSystem generates correct grid', () => {
+                const grid = new GridSystem(1080, 1080);
+                assert(grid.columns === 12, 'Expected 12 columns for square');
+                assert(grid.rows === 12, 'Expected 12 rows for square');
+                assert(grid.margin > 0, 'Margin should be positive');
+
+                const pixel = grid.gridToPixel(0, 0);
+                assert(pixel.x === grid.margin, 'Grid 0,0 should start at margin');
+            });
+
+            // Test 3: Grid types
+            test('GridSystem detects correct grid types', () => {
+                const ultraWide = new GridSystem(1920, 400);
+                assert(ultraWide.gridType === 'ultra-wide', 'Should be ultra-wide');
+
+                const landscape = new GridSystem(1920, 1080);
+                assert(landscape.gridType === 'landscape', 'Should be landscape');
+
+                const portrait = new GridSystem(1080, 1920);
+                assert(portrait.gridType === 'portrait', 'Should be portrait');
+            });
+
+            // Test 4: AIAnalysisEngine
+            test('AIAnalysisEngine initializes', () => {
+                const ai = new AIAnalysisEngine();
+                assert(typeof ai.initialize === 'function', 'initialize method missing');
+                assert(typeof ai.analyzeImage === 'function', 'analyzeImage method missing');
+            });
+
+            // Test 5: CompositionEngine
+            test('CompositionEngine initializes', () => {
+                const canvas = new fabric.Canvas('test-canvas', { width: 100, height: 100 });
+                const grid = new GridSystem(100, 100);
+                const comp = new CompositionEngine(canvas, grid);
+                assert(typeof comp.calculateLogoPlacement === 'function', 'calculateLogoPlacement missing');
+            });
+
+            // Test 6: ValidationRules
+            test('ValidationRules validates categories', () => {
+                const validator = new ValidationRules();
+                const result = validator.validateCategory({ category: 'people-motion', subcategory: 'running' });
+                assert(result.approved === true, 'Running should be approved');
+
+                const rejected = validator.validateCategory({ category: 'people-static', subcategory: 'selfie' });
+                assert(rejected.rejected === true, 'Selfie should be rejected');
+            });
+
+            // Test 7: ExportSystem
+            test('ExportSystem initializes', () => {
+                const canvas = new fabric.Canvas('test-canvas', { width: 100, height: 100 });
+                const grid = new GridSystem(100, 100);
+                const exporter = new ExportSystem(canvas, grid);
+                assert(typeof exporter.export === 'function', 'export method missing');
+            });
+
+            // Test 8: CanvasManager
+            test('CanvasManager initializes', () => {
+                const cm = new CanvasManager('test-canvas', 800, 600);
+                assert(cm.canvas !== null, 'Canvas not created');
+                assert(cm.zoom === 1, 'Default zoom should be 1');
+            });
+
+            // Test 9: DemoHelper
+            test('DemoHelper generates images', () => {
+                const canvas = DemoHelper.generateRunningPerson(400, 300);
+                assert(canvas.width === 400, 'Width mismatch');
+                assert(canvas.height === 300, 'Height mismatch');
+
+                const img = DemoHelper.canvasToImage(canvas);
+                assert(img.src !== '', 'Image should have data URL');
+            });
+
+            // Test 10: Preset dimensions
+            test('Preset dimensions are correct', () => {
+                const ig = AssetPresets.getPreset('ig-square');
+                const dims = AssetPresets.getCanvasDimensions(ig);
+                assert(dims.width === 1080, 'Instagram width should be 1080');
+                assert(dims.height === 1080, 'Instagram height should be 1080');
+
+                const a4 = AssetPresets.getPreset('a4-portrait');
+                const a4Dims = AssetPresets.getCanvasDimensions(a4);
+                assert(a4Dims.width === 2480, 'A4 width at 300dpi should be 2480px');
+                assert(a4Dims.height === 3508, 'A4 height at 300dpi should be 3508px');
+            });
+
+            // Summary
+            results.innerHTML += `<div class="test-result info" style="margin-top:20px;">
+                <strong>Results: ${passCount} passed, ${failCount} failed</strong>
+            </div>`;
+        }, 1000);
+    </script>
+</body>
+</html>

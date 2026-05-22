@@ -1,583 +1,644 @@
 /**
  * Canvas Manager
- * Enhanced Fabric.js canvas with rAF rendering, custom objects, KPMG brand elements
+ * Fabric.js canvas setup, object creation, and layer management
+ * FIXED: Uses KPMG logo SVG, treatment opacity clamped, gradient map support
  */
 
 class CanvasManager {
-  constructor(canvasId, width, height) {
+  constructor(canvasId, gridSystem, stateManager) {
     this.canvasId = canvasId;
-    this.originalWidth = width;
-    this.originalHeight = height;
-
-    // Initialize Fabric.js canvas
-    this.canvas = new fabric.Canvas(canvasId, {
-      width: width,
-      height: height,
-      backgroundColor: '#ffffff',
-      preserveObjectStacking: true,
-      selection: true,
-      uniScaleTransform: false
-    });
-
-    // State
-    this.zoom = 1;
-    this.minZoom = 0.1;
-    this.maxZoom = 5;
-    this.isPanning = false;
-    this.lastPosX = 0;
-    this.lastPosY = 0;
-    this.gridSystem = null;
-    this.showGrid = true;
-    this.showMargins = true;
-    this.snapToGrid = false;
-    this.showHeatmap = false;
-    this.showNegative = false;
-    this.showZones = false;
-
-    // rAF rendering
-    this.renderLoopId = null;
-    this.needsRender = false;
-
-    // Layer management
-    this.layers = {
-      background: { visible: true, locked: false, zIndex: 0 },
-      logo: { visible: true, locked: true, zIndex: 10 },
-      tagline: { visible: true, locked: true, zIndex: 20 },
-      metadata: { visible: true, locked: true, zIndex: 30 },
-      motif: { visible: true, locked: false, zIndex: 5 },
-      swoosh: { visible: true, locked: false, zIndex: 6 },
-      headline: { visible: true, locked: false, zIndex: 25 },
-      subheading: { visible: true, locked: false, zIndex: 24 },
-      treatment: { visible: true, locked: true, zIndex: 2 },
-      grid: { visible: true, locked: true, zIndex: 100 },
-      aiOverlay: { visible: true, locked: true, zIndex: 90 }
-    };
-
-    // Objects registry
-    this.objects = {
-      background: null,
-      logo: null,
-      tagline: null,
-      metadata: null,
-      motif: null,
-      swoosh: null,
-      headline: null,
-      subheading: null,
-      treatment: null,
-      gridLines: [],
-      marginRect: null,
-      heatmap: null,
-      negativeSpace: null,
-      zones: []
-    };
-
-    this.setupCanvasBehavior();
-    this.startRenderLoop();
-  }
-
-  /**
-   * Start rAF rendering loop
-   */
-  startRenderLoop() {
-    const loop = () => {
-      if (this.needsRender) {
-        this.canvas.renderAll();
-        this.needsRender = false;
-      }
-      this.renderLoopId = requestAnimationFrame(loop);
-    };
-    this.renderLoopId = requestAnimationFrame(loop);
-  }
-
-  /**
-   * Request render (debounced via rAF)
-   */
-  requestRender() {
-    this.needsRender = true;
-  }
-
-  /**
-   * Set grid system
-   */
-  setGridSystem(gridSystem) {
     this.gridSystem = gridSystem;
-    this.drawGrid();
-  }
+    this.stateManager = stateManager;
 
-  /**
-   * Setup canvas behavior defaults
-   */
-  setupCanvasBehavior() {
-    fabric.Object.prototype.set({
-      borderColor: '#4f8fff',
-      cornerColor: '#4f8fff',
-      cornerStrokeColor: '#ffffff',
-      cornerSize: 8,
-      transparentCorners: false,
-      cornerStyle: 'circle',
-      selectionBackgroundColor: 'rgba(79, 143, 255, 0.1)'
+    // Initialize Fabric canvas
+    this.canvas = new fabric.Canvas(canvasId, {
+      preserveObjectStacking: true,
+      selection: false,
+      hoverCursor: 'default'
     });
 
-    fabric.Text.prototype.set({
-      lockRotation: true
+    // Object registry
+    this.objects = {};
+
+    // Layer order (bottom to top)
+    this.layerOrder = [
+      'background',
+      'treatment',
+      'motif',
+      'swoosh',
+      'headline',
+      'subheading',
+      'tagline',
+      'metadata',
+      'logo',
+      'grid',
+      'margin'
+    ];
+
+    this.setupCanvas();
+  }
+
+  setupCanvas() {
+    // Set canvas size from grid system
+    if (this.gridSystem) {
+      this.canvas.setWidth(this.gridSystem.canvasWidth);
+      this.canvas.setHeight(this.gridSystem.canvasHeight);
+    }
+
+    // Disable selection for locked elements
+    this.canvas.on('selection:created', (e) => {
+      const obj = e.selected[0];
+      if (obj && (obj.name === 'logo' || obj.name === 'tagline' || obj.name === 'metadata')) {
+        this.canvas.discardActiveObject();
+      }
     });
   }
 
   /**
-   * Draw grid overlay
+   * Create background image
    */
-  drawGrid() {
-    if (!this.gridSystem) return;
+  createBackground(imageUrl, callback) {
+    fabric.Image.fromURL(imageUrl, (img) => {
+      const canvasW = this.canvas.width;
+      const canvasH = this.canvas.height;
 
-    // Remove existing grid
-    this.objects.gridLines.forEach(line => this.canvas.remove(line));
-    this.objects.gridLines = [];
-
-    if (this.objects.marginRect) {
-      this.canvas.remove(this.objects.marginRect);
-    }
-
-    if (!this.showGrid && !this.showMargins) return;
-
-    const lines = this.gridSystem.generateGridLines();
-    const marginRect = this.gridSystem.generateMarginRect();
-
-    // Draw margin rectangle
-    if (this.showMargins) {
-      const rect = new fabric.Rect({
-        left: marginRect.left,
-        top: marginRect.top,
-        width: marginRect.width,
-        height: marginRect.height,
-        fill: 'transparent',
-        stroke: 'rgba(0, 51, 141, 0.15)',
-        strokeWidth: 1,
-        strokeDashArray: [4, 4],
-        selectable: false,
-        evented: false,
-        name: 'margin'
-      });
-      this.canvas.add(rect);
-      this.objects.marginRect = rect;
-    }
-
-    // Draw grid lines
-    if (this.showGrid) {
-      lines.forEach(line => {
-        const fabricLine = new fabric.Line(
-          [line.x1, line.y1, line.x2, line.y2],
-          {
-            stroke: line.major ? 'rgba(0, 51, 141, 0.12)' : 'rgba(0, 51, 141, 0.06)',
-            strokeWidth: 1,
-            selectable: false,
-            evented: false,
-            name: 'grid'
-          }
-        );
-        this.canvas.add(fabricLine);
-        this.objects.gridLines.push(fabricLine);
-      });
-    }
-
-    this.requestRender();
-  }
-
-  /**
-   * Add background image
-   */
-  async addBackgroundImage(imageElement) {
-    if (this.objects.background) {
-      this.canvas.remove(this.objects.background);
-    }
-
-    return new Promise((resolve) => {
-      const img = new fabric.Image(imageElement, {
-        left: 0,
-        top: 0,
+      // Scale to cover canvas while preserving aspect ratio
+      const scale = Math.max(canvasW / img.width, canvasH / img.height);
+      img.set({
+        scaleX: scale,
+        scaleY: scale,
+        left: (canvasW - img.width * scale) / 2,
+        top: (canvasH - img.height * scale) / 2,
         selectable: false,
         evented: false,
         name: 'background'
       });
 
-      const scaleX = this.canvas.width / img.width;
-      const scaleY = this.canvas.height / img.height;
-      const scale = Math.max(scaleX, scaleY);
-
-      img.scale(scale);
-      img.set({
-        left: (this.canvas.width - img.width * scale) / 2,
-        top: (this.canvas.height - img.height * scale) / 2
-      });
-
-      this.canvas.add(img);
       this.objects.background = img;
+      this.canvas.add(img);
       this.canvas.sendToBack(img);
 
-      resolve(img);
-    });
+      if (callback) callback(img);
+    }, { crossOrigin: 'anonymous' });
   }
 
   /**
-   * Add KPMG logo (LOCKED - top-left)
+   * Create color treatment overlay
+   * FIXED: Opacity clamped to minimum 0.3, gradient map support added
    */
-  async addLogo(imageElement, placement) {
-    if (this.objects.logo) {
-      this.canvas.remove(this.objects.logo);
-    }
+  createTreatment(type = 'blue-multiply', options = {}) {
+    const canvasW = this.canvas.width;
+    const canvasH = this.canvas.height;
+    const grid = this.gridSystem;
 
-    return new Promise((resolve) => {
-      const img = new fabric.Image(imageElement, {
-        left: placement.x,
-        top: placement.y,
-        scaleX: placement.scale,
-        scaleY: placement.scale,
+    // Treatment configurations
+    const treatments = {
+      'blue-multiply': {
+        color: options.color || '#1E49E2',
+        blendMode: 'multiply',
+        opacity: Math.max(0.3, Math.min(1.0, options.opacity || 0.85))
+      },
+      'cobalt-linear': {
+        color: options.color || '#1E49E2',
+        blendMode: 'linear-light',
+        opacity: Math.max(0.3, Math.min(1.0, options.opacity || 0.7))
+      },
+      'pacific-gradient': {
+        color: options.color || '#1E49E2',
+        blendMode: 'color',
+        opacity: Math.max(0.3, Math.min(1.0, options.opacity || 0.8)),
+        gradient: true,
+        gradientColors: ['#1E49E2', '#5FD7FF']
+      },
+      'dark-blue': {
+        color: options.color || '#00338D',
+        blendMode: 'multiply',
+        opacity: Math.max(0.3, Math.min(1.0, options.opacity || 0.9))
+      }
+    };
+
+    const config = treatments[type] || treatments['blue-multiply'];
+
+    let treatmentObj;
+
+    if (config.gradient) {
+      // Gradient map treatment (#1E49E2 → #5FD7FF with color blend)
+      treatmentObj = new fabric.Rect({
+        width: canvasW,
+        height: canvasH,
+        left: 0,
+        top: 0,
+        fill: new fabric.Gradient({
+          type: 'linear',
+          coords: { x1: 0, y1: 0, x2: canvasW, y2: canvasH },
+          colorStops: [
+            { offset: 0, color: config.gradientColors[0] },
+            { offset: 1, color: config.gradientColors[1] }
+          ]
+        }),
+        globalCompositeOperation: config.blendMode,
+        opacity: config.opacity,
         selectable: false,
         evented: false,
-        name: 'logo',
+        name: 'treatment'
+      });
+    } else {
+      treatmentObj = new fabric.Rect({
+        width: canvasW,
+        height: canvasH,
+        left: 0,
+        top: 0,
+        fill: config.color,
+        globalCompositeOperation: config.blendMode,
+        opacity: config.opacity,
+        selectable: false,
+        evented: false,
+        name: 'treatment'
+      });
+    }
+
+    this.objects.treatment = treatmentObj;
+    this.canvas.add(treatmentObj);
+
+    // Store treatment config in state
+    this.stateManager.set('composition.treatment', {
+      type,
+      color: config.color,
+      blendMode: config.blendMode,
+      opacity: config.opacity,
+      gradient: config.gradient || false
+    });
+
+    return treatmentObj;
+  }
+
+  /**
+   * Create motif window
+   */
+  createMotif(x, y, width, height, imageClip = true) {
+    const grid = this.gridSystem;
+
+    const motif = new fabric.Rect({
+      left: x,
+      top: y,
+      width: width,
+      height: height,
+      fill: 'transparent',
+      stroke: '#5FD7FF',
+      strokeWidth: 2,
+      selectable: true,
+      evented: true,
+      name: 'motif'
+    });
+
+    // Add clip path for background image
+    if (imageClip && this.objects.background) {
+      const clipPath = new fabric.Rect({
+        left: x,
+        top: y,
+        width: width,
+        height: height,
+        absolutePositioned: true
+      });
+      this.objects.background.clipPath = clipPath;
+    }
+
+    this.objects.motif = motif;
+    this.canvas.add(motif);
+
+    return motif;
+  }
+
+  /**
+   * Create swoosh effect
+   * FIXED: Horizontal only (0°), constrained dimensions
+   */
+  createSwoosh(motif, side = 'left', options = {}) {
+    const grid = this.gridSystem;
+    const motifW = motif.width * motif.scaleX;
+    const motifH = motif.height * motif.scaleY;
+
+    // Swoosh dimensions: <= shortest side of window, <= 0.5x window height
+    const swooshWidth = Math.min(motifW * 0.8, options.width || motifW * 0.6);
+    const swooshHeight = Math.min(motifH * 0.5, options.height || motifH * 0.3);
+
+    const swoosh = new fabric.Rect({
+      width: swooshWidth,
+      height: swooshHeight,
+      fill: options.color || 'rgba(95, 215, 255, 0.3)',
+      opacity: options.opacity || 0.4,
+      selectable: true,
+      evented: true,
+      name: 'swoosh',
+      angle: 0 // FIXED: Horizontal only (0°)
+    });
+
+    // Position based on side
+    if (side === 'left') {
+      swoosh.set({
+        left: motif.left - swooshWidth * 0.5,
+        top: motif.top + (motifH - swooshHeight) / 2
+      });
+    } else {
+      swoosh.set({
+        left: motif.left + motifW - swooshWidth * 0.5,
+        top: motif.top + (motifH - swooshHeight) / 2
+      });
+    }
+
+    // Apply motion blur filter
+    if (fabric.Image.filters && fabric.Image.filters.Blur) {
+      swoosh.filters = [new fabric.Image.filters.Blur({ blur: 0.1 })];
+    }
+
+    this.objects.swoosh = swoosh;
+    this.canvas.add(swoosh);
+
+    return swoosh;
+  }
+
+  /**
+   * Create headline text
+   */
+  createHeadline(text, x, y, options = {}) {
+    const headline = new fabric.Text(text, {
+      left: x,
+      top: y,
+      fontFamily: options.fontFamily || "'KPMG Bold', 'Arial Black', 'Helvetica Neue', Arial, sans-serif",
+      fontSize: options.fontSize || 36,
+      fontWeight: 'bold',
+      fill: options.fill || '#FFFFFF',
+      lineHeight: options.lineHeight || 1.15,
+      selectable: true,
+      evented: true,
+      name: 'headline'
+    });
+
+    this.objects.headline = headline;
+    this.canvas.add(headline);
+
+    return headline;
+  }
+
+  /**
+   * Create subheading text
+   */
+  createSubheading(text, x, y, options = {}) {
+    const subheading = new fabric.Text(text, {
+      left: x,
+      top: y,
+      fontFamily: options.fontFamily || "'Univers', 'Helvetica Neue', Arial, sans-serif",
+      fontSize: options.fontSize || 18,
+      fontWeight: 'normal',
+      fill: options.fill || '#FFFFFF',
+      lineHeight: options.lineHeight || 1.3,
+      selectable: true,
+      evented: true,
+      name: 'subheading'
+    });
+
+    this.objects.subheading = subheading;
+    this.canvas.add(subheading);
+
+    return subheading;
+  }
+
+  /**
+   * Create tagline text (LOCKED)
+   */
+  createTagline(text, x, y, options = {}) {
+    const tagline = new fabric.Text(text || 'KPMG. Make the Difference.', {
+      left: x,
+      top: y,
+      fontFamily: options.fontFamily || "'Univers', 'Helvetica Neue', Arial, sans-serif",
+      fontSize: options.fontSize || 14,
+      fontWeight: 'normal',
+      fill: options.fill || '#FFFFFF',
+      selectable: false,
+      evented: false,
+      lockMovementX: true,
+      lockMovementY: true,
+      lockRotation: true,
+      lockScalingX: true,
+      lockScalingY: true,
+      hasControls: false,
+      hasBorders: false,
+      name: 'tagline'
+    });
+
+    this.objects.tagline = tagline;
+    this.canvas.add(tagline);
+
+    return tagline;
+  }
+
+  /**
+   * Create metadata text (URL, Date, CTA) (LOCKED)
+   * FIXED: Proper 2-grid-unit spacing between elements
+   */
+  createMetadata(metadata, x, y, options = {}) {
+    const grid = this.gridSystem;
+    const group = new fabric.Group([], {
+      left: x,
+      top: y,
+      selectable: false,
+      evented: false,
+      lockMovementX: true,
+      lockMovementY: true,
+      lockRotation: true,
+      lockScalingX: true,
+      lockScalingY: true,
+      hasControls: false,
+      hasBorders: false,
+      name: 'metadata'
+    });
+
+    const fontSize = options.fontSize || 12;
+    const spacing = grid ? grid.cellWidth * 2 : 40; // 2 grid units spacing
+    let currentX = 0;
+
+    // URL
+    if (metadata.url) {
+      const urlText = new fabric.Text(metadata.url, {
+        left: currentX,
+        top: 0,
+        fontFamily: options.fontFamily || "'Univers', 'Helvetica Neue', Arial, sans-serif",
+        fontSize: fontSize,
+        fill: options.fill || '#FFFFFF',
+        selectable: false,
+        evented: false
+      });
+      group.addWithUpdate(urlText);
+      currentX += urlText.width + spacing;
+    }
+
+    // Date
+    if (metadata.date) {
+      const dateText = new fabric.Text(metadata.date, {
+        left: currentX,
+        top: 0,
+        fontFamily: options.fontFamily || "'Univers', 'Helvetica Neue', Arial, sans-serif",
+        fontSize: fontSize,
+        fill: options.fill || '#FFFFFF',
+        selectable: false,
+        evented: false
+      });
+      group.addWithUpdate(dateText);
+      currentX += dateText.width + spacing;
+    }
+
+    // CTA
+    if (metadata.cta) {
+      const ctaText = new fabric.Text(metadata.cta, {
+        left: currentX,
+        top: 0,
+        fontFamily: options.fontFamily || "'Univers', 'Helvetica Neue', Arial, sans-serif",
+        fontSize: fontSize,
+        fill: options.fill || '#FFFFFF',
+        selectable: false,
+        evented: false
+      });
+      group.addWithUpdate(ctaText);
+    }
+
+    this.objects.metadata = group;
+    this.canvas.add(group);
+
+    return group;
+  }
+
+  /**
+   * Create KPMG logo (LOCKED, TOP-LEFT)
+   * FIXED: Uses actual KPMG logo SVG from assets
+   */
+  createLogo(options = {}) {
+    const grid = this.gridSystem;
+    const logoZone = grid.getLogoZone();
+
+    // Try to load KPMG logo SVG
+    const logoUrl = options.logoUrl || 'assets/kpmg-logo.svg';
+
+    fabric.loadSVGFromURL(logoUrl, (objects, options) => {
+      const logo = fabric.util.groupSVGElements(objects, options);
+
+      // Scale to fit 2x1 grid units
+      const targetWidth = logoZone.width;
+      const targetHeight = logoZone.height;
+      const scale = Math.min(targetWidth / logo.width, targetHeight / logo.height);
+
+      logo.set({
+        left: logoZone.x,
+        top: logoZone.y,
+        scaleX: scale,
+        scaleY: scale,
+        selectable: false,
+        evented: false,
+        lockMovementX: true,
+        lockMovementY: true,
         lockRotation: true,
-        lockScalingFlip: true
+        lockScalingX: true,
+        lockScalingY: true,
+        hasControls: false,
+        hasBorders: false,
+        name: 'logo'
       });
 
-      this.canvas.add(img);
-      this.objects.logo = img;
-      this.canvas.bringToFront(img);
+      this.objects.logo = logo;
+      this.canvas.add(logo);
+      this.canvas.bringToFront(logo);
+    }, null, { crossOrigin: 'anonymous' });
 
-      resolve(img);
-    });
+    // Fallback: Create placeholder if SVG fails to load
+    setTimeout(() => {
+      if (!this.objects.logo) {
+        this.createLogoFallback(options);
+      }
+    }, 2000);
   }
 
   /**
-   * Add tagline (LOCKED - bottom-left)
+   * Create logo fallback (if SVG not available)
+   * FIXED: Uses proper KPMG blue color blocks instead of Arial text
    */
-  addTagline(text, placement) {
-    if (this.objects.tagline) {
-      this.canvas.remove(this.objects.tagline);
-    }
+  createLogoFallback(options = {}) {
+    const grid = this.gridSystem;
+    const logoZone = grid.getLogoZone();
+    const kpmgBlue = options.color || '#00338D';
 
-    const textObj = new fabric.Text(text, {
-      left: placement.x,
-      top: placement.y,
-      fontSize: placement.fontSize || 16,
-      fontFamily: "'Univers', 'Helvetica Neue', Arial, sans-serif",
-      fill: '#00338D',
-      fontWeight: '500',
+    const group = new fabric.Group([], {
+      left: logoZone.x,
+      top: logoZone.y,
       selectable: false,
       evented: false,
-      name: 'tagline',
-      lockRotation: true
+      lockMovementX: true,
+      lockMovementY: true,
+      lockRotation: true,
+      lockScalingX: true,
+      lockScalingY: true,
+      hasControls: false,
+      hasBorders: false,
+      name: 'logo'
     });
 
-    this.canvas.add(textObj);
-    this.objects.tagline = textObj;
-    this.canvas.bringToFront(textObj);
+    // Create 4 KPMG blocks (2x2 grid of blocks, overall 2x1 grid units)
+    const blockWidth = logoZone.width / 2;
+    const blockHeight = logoZone.height;
+    const blockColors = [kpmgBlue, kpmgBlue, kpmgBlue, kpmgBlue];
+    const letters = ['K', 'P', 'M', 'G'];
 
-    return textObj;
+    for (let i = 0; i < 4; i++) {
+      const col = i % 2;
+      const row = Math.floor(i / 2);
+
+      const block = new fabric.Rect({
+        left: col * blockWidth,
+        top: row * (blockHeight / 2),
+        width: blockWidth - 2,
+        height: (blockHeight / 2) - 2,
+        fill: blockColors[i],
+        rx: 2,
+        selectable: false,
+        evented: false
+      });
+
+      const letter = new fabric.Text(letters[i], {
+        left: col * blockWidth + blockWidth / 2,
+        top: row * (blockHeight / 2) + (blockHeight / 4),
+        fontFamily: "'Arial Black', 'Helvetica Neue', Arial, sans-serif",
+        fontSize: Math.min(blockWidth, blockHeight / 2) * 0.6,
+        fontWeight: 'bold',
+        fill: '#FFFFFF',
+        originX: 'center',
+        originY: 'center',
+        selectable: false,
+        evented: false
+      });
+
+      group.addWithUpdate(block);
+      group.addWithUpdate(letter);
+    }
+
+    this.objects.logo = group;
+    this.canvas.add(group);
+    this.canvas.bringToFront(group);
+
+    return group;
   }
 
   /**
-   * Add metadata (LOCKED - bottom-right)
+   * Create grid overlay (visual guide)
    */
-  addMetadata(text, placement) {
-    if (this.objects.metadata) {
-      this.canvas.remove(this.objects.metadata);
-    }
-
-    const textObj = new fabric.Text(text, {
-      left: placement.x,
-      top: placement.y,
-      fontSize: placement.fontSize || 11,
-      fontFamily: "'Univers', 'Helvetica Neue', Arial, sans-serif",
-      fill: '#5A6B8A',
-      textAlign: placement.align || 'right',
+  createGridOverlay() {
+    const grid = this.gridSystem;
+    const lines = grid.generateGridLines();
+    const group = new fabric.Group([], {
       selectable: false,
       evented: false,
-      name: 'metadata',
-      lockRotation: true
+      name: 'grid'
     });
 
-    this.canvas.add(textObj);
-    this.objects.metadata = textObj;
-    this.canvas.bringToFront(textObj);
+    lines.forEach(line => {
+      const fabricLine = new fabric.Line(
+        [line.x1, line.y1, line.x2, line.y2],
+        {
+          stroke: line.major ? 'rgba(95, 215, 255, 0.3)' : 'rgba(95, 215, 255, 0.1)',
+          strokeWidth: line.major ? 1 : 0.5,
+          selectable: false,
+          evented: false
+        }
+      );
+      group.addWithUpdate(fabricLine);
+    });
 
-    return textObj;
+    this.objects.grid = group;
+    this.canvas.add(group);
+    this.canvas.sendToBack(group);
+
+    return group;
   }
 
   /**
-   * Add headline text (EDITABLE)
+   * Create margin rectangle
    */
-  addHeadline(text, placement) {
-    if (this.objects.headline) {
-      this.canvas.remove(this.objects.headline);
-    }
-
-    const textObj = new fabric.Text(text, {
-      left: placement.x,
-      top: placement.y,
-      fontSize: placement.fontSize || 36,
-      fontFamily: "'KPMG Bold', 'Arial Black', 'Helvetica Neue', Arial, sans-serif",
-      fill: '#1A2B4A',
-      fontWeight: 'bold',
-      selectable: true,
-      evented: true,
-      name: 'headline',
-      lockRotation: true
-    });
-
-    this.canvas.add(textObj);
-    this.objects.headline = textObj;
-    this.canvas.bringToFront(textObj);
-
-    return textObj;
-  }
-
-  /**
-   * Add subheading text (EDITABLE)
-   */
-  addSubheading(text, placement) {
-    if (this.objects.subheading) {
-      this.canvas.remove(this.objects.subheading);
-    }
-
-    const textObj = new fabric.Text(text, {
-      left: placement.x,
-      top: placement.y,
-      fontSize: placement.fontSize || 18,
-      fontFamily: "'Univers', 'Helvetica Neue', Arial, sans-serif",
-      fill: '#5A6B8A',
-      selectable: true,
-      evented: true,
-      name: 'subheading',
-      lockRotation: true
-    });
-
-    this.canvas.add(textObj);
-    this.objects.subheading = textObj;
-    this.canvas.bringToFront(textObj);
-
-    return textObj;
-  }
-
-  /**
-   * Add motif window (EDITABLE)
-   */
-  addMotif(motif) {
-    if (this.objects.motif) {
-      this.canvas.remove(this.objects.motif);
-    }
+  createMarginRect() {
+    const grid = this.gridSystem;
+    const marginRect = grid.generateMarginRect();
 
     const rect = new fabric.Rect({
-      left: motif.x,
-      top: motif.y,
-      width: motif.width,
-      height: motif.height,
+      left: marginRect.left,
+      top: marginRect.top,
+      width: marginRect.width,
+      height: marginRect.height,
       fill: 'transparent',
-      stroke: 'rgba(0, 51, 141, 0.3)',
-      strokeWidth: 2,
-      strokeDashArray: [6, 4],
-      selectable: true,
-      evented: true,
-      name: 'motif',
-      lockRotation: true
+      stroke: 'rgba(95, 215, 255, 0.2)',
+      strokeWidth: 1,
+      strokeDashArray: [5, 5],
+      selectable: false,
+      evented: false,
+      name: 'margin'
     });
 
+    this.objects.margin = rect;
     this.canvas.add(rect);
-    this.objects.motif = rect;
+    this.canvas.sendToBack(rect);
 
     return rect;
   }
 
   /**
-   * Add swoosh element (EDITABLE)
+   * Update object position
    */
-  addSwoosh(swoosh) {
-    if (this.objects.swoosh) {
-      this.canvas.remove(this.objects.swoosh);
+  updateObject(name, properties) {
+    const obj = this.objects[name];
+    if (obj) {
+      obj.set(properties);
+      obj.setCoords();
+      this.canvas.renderAll();
     }
+  }
 
-    // Horizontal motion blur effect
-    const blurRect = new fabric.Rect({
-      left: swoosh.x,
-      top: swoosh.y,
-      width: swoosh.width,
-      height: swoosh.height,
-      fill: 'rgba(95, 215, 255, 0.15)',
-      selectable: true,
-      evented: true,
-      name: 'swoosh',
-      lockRotation: true
+  /**
+   * Remove object
+   */
+  removeObject(name) {
+    const obj = this.objects[name];
+    if (obj) {
+      this.canvas.remove(obj);
+      delete this.objects[name];
+    }
+  }
+
+  /**
+   * Toggle grid visibility
+   */
+  toggleGrid(show) {
+    const grid = this.objects.grid;
+    if (grid) {
+      grid.set({ visible: show });
+      this.canvas.renderAll();
+    }
+  }
+
+  /**
+   * Toggle margin visibility
+   */
+  toggleMargin(show) {
+    const margin = this.objects.margin;
+    if (margin) {
+      margin.set({ visible: show });
+      this.canvas.renderAll();
+    }
+  }
+
+  /**
+   * Get canvas as data URL
+   */
+  toDataURL(options = {}) {
+    return this.canvas.toDataURL({
+      format: options.format || 'png',
+      quality: options.quality || 1,
+      multiplier: options.multiplier || 1
     });
-
-    this.canvas.add(blurRect);
-    this.objects.swoosh = blurRect;
-
-    return blurRect;
-  }
-
-  /**
-   * Apply color treatment
-   */
-  applyColorTreatment(treatment) {
-    // Remove existing
-    if (this.objects.treatment) {
-      this.canvas.remove(this.objects.treatment);
-    }
-
-    const overlay = new fabric.Rect({
-      left: 0,
-      top: 0,
-      width: this.canvas.width,
-      height: this.canvas.height,
-      fill: treatment.color || '#1E49E2',
-      opacity: treatment.opacity || 0.85,
-      selectable: false,
-      evented: false,
-      name: 'color-treatment'
-    });
-
-    // Set blend mode
-    const blendModes = {
-      'multiply': 'multiply',
-      'hard-light': 'hard-light',
-      'linear-light': 'hard-light',
-      'color': 'color',
-      'overlay': 'overlay'
-    };
-    overlay.globalCompositeOperation = blendModes[treatment.blendMode] || 'multiply';
-
-    // Handle gradient
-    if (treatment.lightTone) {
-      const gradient = new fabric.Gradient({
-        type: 'linear',
-        coords: { x1: 0, y1: 0, x2: 0, y2: this.canvas.height },
-        colorStops: [
-          { offset: 0, color: treatment.lightTone },
-          { offset: 1, color: treatment.darkTone || treatment.color }
-        ]
-      });
-      overlay.set('fill', gradient);
-      overlay.globalCompositeOperation = 'color';
-    }
-
-    this.canvas.add(overlay);
-    this.objects.treatment = overlay;
-    overlay.moveTo(1); // Just above background
-
-    this.requestRender();
-  }
-
-  /**
-   * Snap object to grid
-   */
-  snapObjectToGrid(obj) {
-    if (!this.gridSystem) return;
-
-    const snapped = this.gridSystem.snapToGrid(
-      obj.left,
-      obj.top,
-      obj.width * obj.scaleX,
-      obj.height * obj.scaleY
-    );
-
-    obj.set({
-      left: snapped.x,
-      top: snapped.y
-    });
-
-    obj.setCoords();
-    this.requestRender();
-  }
-
-  /**
-   * Zoom controls
-   */
-  zoomIn() {
-    const newZoom = Math.min(this.maxZoom, this.zoom * 1.2);
-    this.setZoom(newZoom);
-  }
-
-  zoomOut() {
-    const newZoom = Math.max(this.minZoom, this.zoom / 1.2);
-    this.setZoom(newZoom);
-  }
-
-  setZoom(zoom) {
-    this.zoom = zoom;
-    this.canvas.setZoom(zoom);
-    this.requestRender();
-    this.updateZoomDisplay();
-  }
-
-  fitToScreen() {
-    const wrapper = document.getElementById('canvas-wrapper');
-    if (!wrapper) return;
-
-    const wrapperWidth = wrapper.clientWidth - 40;
-    const wrapperHeight = wrapper.clientHeight - 40;
-
-    const scaleX = wrapperWidth / this.canvas.width;
-    const scaleY = wrapperHeight / this.canvas.height;
-    const scale = Math.min(scaleX, scaleY, 1);
-
-    this.setZoom(scale);
-
-    const vpt = this.canvas.viewportTransform;
-    vpt[4] = (wrapperWidth - this.canvas.width * scale) / 2;
-    vpt[5] = (wrapperHeight - this.canvas.height * scale) / 2;
-    this.canvas.requestRenderAll();
-  }
-
-  updateZoomDisplay() {
-    const display = document.getElementById('zoom-level');
-    if (display) {
-      display.textContent = Math.round(this.zoom * 100) + '%';
-    }
-  }
-
-  togglePanMode(enabled) {
-    this.isPanning = enabled;
-    this.canvas.selection = !enabled;
-  }
-
-  /**
-   * Toggle layer
-   */
-  toggleLayer(layerName) {
-    if (this.layers[layerName]) {
-      this.layers[layerName].visible = !this.layers[layerName].visible;
-      const obj = this.objects[layerName];
-      if (obj) {
-        if (Array.isArray(obj)) {
-          obj.forEach(o => o.set('visible', this.layers[layerName].visible));
-        } else {
-          obj.set('visible', this.layers[layerName].visible);
-        }
-      }
-      this.requestRender();
-    }
-  }
-
-  /**
-   * Clear canvas
-   */
-  clear() {
-    this.canvas.clear();
-    this.canvas.backgroundColor = '#ffffff';
-    this.objects = {
-      background: null,
-      logo: null,
-      tagline: null,
-      metadata: null,
-      motif: null,
-      swoosh: null,
-      headline: null,
-      subheading: null,
-      treatment: null,
-      gridLines: [],
-      marginRect: null,
-      heatmap: null,
-      negativeSpace: null,
-      zones: []
-    };
   }
 
   /**
@@ -586,111 +647,57 @@ class CanvasManager {
   resize(width, height) {
     this.canvas.setWidth(width);
     this.canvas.setHeight(height);
-    this.originalWidth = width;
-    this.originalHeight = height;
-    this.requestRender();
+
+    // Update grid system
+    if (this.gridSystem) {
+      this.gridSystem.canvasWidth = width;
+      this.gridSystem.canvasHeight = height;
+      this.gridSystem.calculateGrid();
+    }
+
+    // Recreate grid overlay
+    if (this.objects.grid) {
+      this.removeObject('grid');
+      this.createGridOverlay();
+    }
+
+    // Recreate margin
+    if (this.objects.margin) {
+      this.removeObject('margin');
+      this.createMarginRect();
+    }
+
+    this.canvas.renderAll();
   }
 
   /**
-   * Get canvas data URL
+   * Get object by name
    */
-  toDataURL(options = {}) {
-    return this.canvas.toDataURL(options);
+  getObject(name) {
+    return this.objects[name];
   }
 
   /**
-   * Destroy
+   * Get all objects
+   */
+  getAllObjects() {
+    return { ...this.objects };
+  }
+
+  /**
+   * Clear canvas
+   */
+  clear() {
+    this.canvas.clear();
+    this.objects = {};
+  }
+
+  /**
+   * Destroy canvas
    */
   destroy() {
-    if (this.renderLoopId) {
-      cancelAnimationFrame(this.renderLoopId);
-    }
     this.canvas.dispose();
-  }
-
-  /**
-   * Draw accessibility heatmap overlay
-   */
-  drawHeatmap(heatmap) {
-    // Remove existing heatmap
-    if (this.objects.heatmap) {
-      this.canvas.remove(this.objects.heatmap);
-      this.objects.heatmap = null;
-    }
-
-    if (!heatmap || !this.showHeatmap) return;
-
-    // Create heatmap overlay using rectangles
-    const group = new fabric.Group([], {
-      selectable: false,
-      evented: false,
-      name: 'heatmap'
-    });
-
-    heatmap.forEach(cell => {
-      const rect = new fabric.Rect({
-        left: cell.x,
-        top: cell.y,
-        width: cell.width,
-        height: cell.height,
-        fill: cell.color,
-        selectable: false,
-        evented: false
-      });
-      group.addWithUpdate(rect);
-    });
-
-    this.canvas.add(group);
-    this.objects.heatmap = group;
-    group.moveTo(95); // Just below AI overlay
-
-    this.requestRender();
-  }
-
-  /**
-   * Toggle heatmap visibility
-   */
-  toggleHeatmap(show) {
-    this.showHeatmap = show;
-    if (this.objects.heatmap) {
-      this.objects.heatmap.set('visible', show);
-      this.requestRender();
-    }
-  }
-
-  /**
-   * Draw unsafe regions highlight
-   */
-  drawUnsafeRegions(regions) {
-    // Remove existing
-    if (this.objects.unsafeRegions) {
-      this.objects.unsafeRegions.forEach(r => this.canvas.remove(r));
-    }
-    this.objects.unsafeRegions = [];
-
-    if (!regions) return;
-
-    regions.forEach(region => {
-      const rect = new fabric.Rect({
-        left: region.x,
-        top: region.y,
-        width: region.width,
-        height: region.height,
-        fill: 'rgba(239, 68, 68, 0.15)',
-        stroke: 'rgba(239, 68, 68, 0.5)',
-        strokeWidth: 1,
-        strokeDashArray: [4, 4],
-        selectable: false,
-        evented: false,
-        name: 'unsafe-region'
-      });
-
-      this.canvas.add(rect);
-      this.objects.unsafeRegions.push(rect);
-      rect.moveTo(96);
-    });
-
-    this.requestRender();
+    this.objects = {};
   }
 }
 

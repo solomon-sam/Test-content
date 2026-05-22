@@ -1,156 +1,1125 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>Brand Composition Engine - Test</title>
-    <style>
-        body { font-family: monospace; padding: 20px; background: #1a1a2e; color: #eee; }
-        .pass { color: #4ade80; }
-        .fail { color: #ef4444; }
-        .info { color: #60a5fa; }
-        .test-result { margin: 5px 0; padding: 8px; background: #16213e; border-radius: 4px; }
-    </style>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KPMG BCE — Test Runner</title>
+  <style>
+    :root {
+      --kpmg-blue: #00338D;
+      --kpmg-blue-light: #1E49E2;
+      --bg-primary: #F5F8FC;
+      --bg-secondary: #FFFFFF;
+      --text-primary: #1A2B4A;
+      --text-secondary: #5A6B8A;
+      --text-muted: #8A9AB0;
+      --border-primary: #D8E0EC;
+      --pass: #22c55e;
+      --fail: #ef4444;
+      --warning: #eab308;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      line-height: 1.5;
+      padding: 40px 20px;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    header {
+      margin-bottom: 32px;
+    }
+
+    h1 {
+      color: var(--kpmg-blue);
+      font-size: 28px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .subtitle {
+      color: var(--text-secondary);
+      font-size: 15px;
+    }
+
+    .controls {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .btn {
+      padding: 12px 24px;
+      border: none;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-family: inherit;
+    }
+
+    .btn-primary {
+      background: var(--kpmg-blue);
+      color: white;
+    }
+    .btn-primary:hover { background: #002A70; }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .btn-secondary {
+      background: white;
+      color: var(--text-primary);
+      border: 1px solid var(--border-primary);
+    }
+    .btn-secondary:hover { background: #f8fafc; }
+
+    .summary-card {
+      background: white;
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 24px;
+      box-shadow: 0 2px 8px rgba(0,51,141,0.06);
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 20px;
+    }
+
+    .stat {
+      text-align: center;
+    }
+
+    .stat-value {
+      font-size: 36px;
+      font-weight: 700;
+      font-family: 'SF Mono', Monaco, monospace;
+    }
+
+    .stat-value.total { color: var(--kpmg-blue); }
+    .stat-value.pass { color: var(--pass); }
+    .stat-value.fail { color: var(--fail); }
+    .stat-value.duration { color: var(--text-secondary); }
+
+    .stat-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      font-weight: 600;
+    }
+
+    .progress-bar {
+      width: 100%;
+      height: 6px;
+      background: var(--border-primary);
+      border-radius: 3px;
+      margin-top: 16px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--kpmg-blue), var(--kpmg-blue-light));
+      border-radius: 3px;
+      transition: width 0.3s;
+      width: 0%;
+    }
+
+    .results-container {
+      background: white;
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 2px 8px rgba(0,51,141,0.06);
+      min-height: 200px;
+    }
+
+    .suite-header {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin: 20px 0 10px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border-primary);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .suite-header:first-child { margin-top: 0; }
+
+    .test-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 14px;
+      border-radius: 8px;
+      margin-bottom: 4px;
+      transition: background 0.15s;
+    }
+
+    .test-item:hover { background: #f8fafc; }
+
+    .test-status {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    .test-status.pass {
+      background: #E8F5E9;
+      color: #2E7D32;
+    }
+
+    .test-status.fail {
+      background: #FFEBEE;
+      color: #C62828;
+    }
+
+    .test-status.pending {
+      background: #FFF3E0;
+      color: #EF6C00;
+    }
+
+    .test-name {
+      font-size: 13px;
+      color: var(--text-primary);
+      flex: 1;
+    }
+
+    .test-duration {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-family: 'SF Mono', Monaco, monospace;
+    }
+
+    .test-error {
+      margin: 8px 0 8px 36px;
+      padding: 12px 16px;
+      background: #FFEBEE;
+      border-radius: 8px;
+      font-size: 12px;
+      color: #C62828;
+      font-family: 'SF Mono', Monaco, monospace;
+      white-space: pre-wrap;
+      line-height: 1.5;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--text-muted);
+    }
+
+    .empty-state svg {
+      margin-bottom: 16px;
+      opacity: 0.5;
+    }
+
+    .timestamp {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 20px;
+      text-align: center;
+    }
+
+    .loading-spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-right: 8px;
+      vertical-align: middle;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    @media (max-width: 600px) {
+      .summary-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
 </head>
 <body>
-    <h1>Brand Composition Engine - Unit Tests</h1>
-    <div id="results"></div>
-    <canvas id="test-canvas" style="display:none;"></canvas>
+  <div class="container">
+    <header>
+      <h1>
+        <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+          <rect x="2" y="2" width="12" height="12" rx="2" fill="#00338D"/>
+          <rect x="18" y="2" width="12" height="12" rx="2" fill="#1E49E2"/>
+          <rect x="2" y="18" width="12" height="12" rx="2" fill="#5FD7FF"/>
+          <rect x="18" y="18" width="12" height="12" rx="2" fill="#00338D" opacity="0.3"/>
+        </svg>
+        KPMG Brand Composition Engine
+      </h1>
+      <p class="subtitle">Phase 4 — Test Runner. Validates all core engine modules.</p>
+    </header>
 
-    <script src="app/presets/asset-presets.js"></script>
-    <script src="app/engine/grid-system.js"></script>
-    <script src="app/engine/ai-analysis.js"></script>
-    <script src="app/engine/composition-engine.js"></script>
-    <script src="app/engine/validation-rules.js"></script>
-    <script src="app/engine/export-system.js"></script>
-    <script src="app/components/canvas-manager.js"></script>
-    <script src="app/components/layers-panel.js"></script>
-    <script src="app/components/ui-controls.js"></script>
-    <script src="app/components/demo-helper.js"></script>
+    <div class="controls">
+      <button class="btn btn-primary" id="run-btn" onclick="runTests()">
+        <span id="btn-text">Run All Tests</span>
+      </button>
+      <button class="btn btn-secondary" onclick="downloadReport()">Download Report</button>
+    </div>
 
-    <script>
-        const results = document.getElementById('results');
-        let passCount = 0;
-        let failCount = 0;
+    <div class="summary-card" id="summary-card" style="display:none;">
+      <div class="summary-grid">
+        <div class="stat">
+          <div class="stat-value total" id="stat-total">0</div>
+          <div class="stat-label">Total</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value pass" id="stat-pass">0</div>
+          <div class="stat-label">Passed</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value fail" id="stat-fail">0</div>
+          <div class="stat-label">Failed</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value duration" id="stat-duration">0ms</div>
+          <div class="stat-label">Duration</div>
+        </div>
+      </div>
+      <div class="progress-bar">
+        <div class="progress-fill" id="progress-fill"></div>
+      </div>
+    </div>
 
-        function test(name, fn) {
-            try {
-                fn();
-                passCount++;
-                results.innerHTML += `<div class="test-result pass">✓ ${name}</div>`;
-            } catch (e) {
-                failCount++;
-                results.innerHTML += `<div class="test-result fail">✗ ${name}: ${e.message}</div>`;
-            }
-        }
+    <div class="results-container" id="results">
+      <div class="empty-state">
+        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M9 11l3 3L22 4"/>
+          <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>
+        </svg>
+        <p>Click "Run All Tests" to start the test suite</p>
+      </div>
+    </div>
 
-        function assert(condition, message) {
-            if (!condition) throw new Error(message || 'Assertion failed');
-        }
+    <div class="timestamp" id="timestamp"></div>
+  </div>
 
-        // Run tests
-        setTimeout(() => {
-            results.innerHTML += '<div class="test-result info">Running tests...</div>';
+  <!-- Dependencies -->
+  <script src="app/presets/asset-presets.js"></script>
+  <script src="app/engine/state-manager.js"></script>
+  <script src="app/engine/grid-system.js"></script>
+  <script src="app/engine/performance-monitor.js"></script>
+  <script src="app/engine/object-pool.js"></script>
+  <script src="app/engine/compliance-engine.js"></script>
+  <script src="app/engine/constraint-engine.js"></script>
+  <script src="app/engine/orchestration-engine-v2.js"></script>
+  <script src="app/components/test-runner.js"></script>
 
-            // Test 1: AssetPresets
-            test('AssetPresets loads correctly', () => {
-                assert(typeof AssetPresets !== 'undefined', 'AssetPresets not defined');
-                assert(AssetPresets.categories.social !== undefined, 'Social category missing');
-                assert(AssetPresets.getPreset('ig-square') !== null, 'Instagram preset not found');
-            });
+  <!-- Fabric.js is needed for ObjectPool tests -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
 
-            // Test 2: GridSystem
-            test('GridSystem generates correct grid', () => {
-                const grid = new GridSystem(1080, 1080);
-                assert(grid.columns === 12, 'Expected 12 columns for square');
-                assert(grid.rows === 12, 'Expected 12 rows for square');
-                assert(grid.margin > 0, 'Margin should be positive');
+  <script>
+    let lastRunner = null;
+    let lastResults = null;
 
-                const pixel = grid.gridToPixel(0, 0);
-                assert(pixel.x === grid.margin, 'Grid 0,0 should start at margin');
-            });
+    async function runTests() {
+      const btn = document.getElementById('run-btn');
+      const btnText = document.getElementById('btn-text');
+      const resultsEl = document.getElementById('results');
+      const summaryCard = document.getElementById('summary-card');
 
-            // Test 3: Grid types
-            test('GridSystem detects correct grid types', () => {
-                const ultraWide = new GridSystem(1920, 400);
-                assert(ultraWide.gridType === 'ultra-wide', 'Should be ultra-wide');
+      btn.disabled = true;
+      btnText.innerHTML = '<span class="loading-spinner"></span> Running...';
+      summaryCard.style.display = 'block';
+      resultsEl.innerHTML = '<div class="empty-state"><p>Running tests...</p></div>';
 
-                const landscape = new GridSystem(1920, 1080);
-                assert(landscape.gridType === 'landscape', 'Should be landscape');
+      const runner = new TestRunner({ verbose: true });
+      lastRunner = runner;
 
-                const portrait = new GridSystem(1080, 1920);
-                assert(portrait.gridType === 'portrait', 'Should be portrait');
-            });
+      // === STATE MANAGER TESTS ===
+      runner.describe('StateManager', () => {
+        let sm;
 
-            // Test 4: AIAnalysisEngine
-            test('AIAnalysisEngine initializes', () => {
-                const ai = new AIAnalysisEngine();
-                assert(typeof ai.initialize === 'function', 'initialize method missing');
-                assert(typeof ai.analyzeImage === 'function', 'analyzeImage method missing');
-            });
+        runner.beforeEach(() => {
+          sm = new StateManager();
+        });
 
-            // Test 5: CompositionEngine
-            test('CompositionEngine initializes', () => {
-                const canvas = new fabric.Canvas('test-canvas', { width: 100, height: 100 });
-                const grid = new GridSystem(100, 100);
-                const comp = new CompositionEngine(canvas, grid);
-                assert(typeof comp.calculateLogoPlacement === 'function', 'calculateLogoPlacement missing');
-            });
+        runner.test('should initialize with default state', () => {
+          TestRunner.assertEquals(sm.get('currentStep'), 'explore');
+          TestRunner.assertEquals(sm.get('brandScore'), 0);
+          TestRunner.assertTrue(Array.isArray(sm.get('completedSteps')));
+        });
 
-            // Test 6: ValidationRules
-            test('ValidationRules validates categories', () => {
-                const validator = new ValidationRules();
-                const result = validator.validateCategory({ category: 'people-motion', subcategory: 'running' });
-                assert(result.approved === true, 'Running should be approved');
+        runner.test('should set and get values at root path', () => {
+          sm.set('headline', 'Test Headline');
+          TestRunner.assertEquals(sm.get('headline'), 'Test Headline');
+        });
 
-                const rejected = validator.validateCategory({ category: 'people-static', subcategory: 'selfie' });
-                assert(rejected.rejected === true, 'Selfie should be rejected');
-            });
+        runner.test('should set and get nested values', () => {
+          sm.set('composition.treatment.color', '#FF0000');
+          TestRunner.assertEquals(sm.get('composition.treatment.color'), '#FF0000');
+          TestRunner.assertEquals(sm.get('composition.treatment').color, '#FF0000');
+        });
 
-            // Test 7: ExportSystem
-            test('ExportSystem initializes', () => {
-                const canvas = new fabric.Canvas('test-canvas', { width: 100, height: 100 });
-                const grid = new GridSystem(100, 100);
-                const exporter = new ExportSystem(canvas, grid);
-                assert(typeof exporter.export === 'function', 'export method missing');
-            });
+        runner.test('should create nested objects automatically', () => {
+          sm.set('deep.nested.path.value', 42);
+          TestRunner.assertEquals(sm.get('deep.nested.path.value'), 42);
+        });
 
-            // Test 8: CanvasManager
-            test('CanvasManager initializes', () => {
-                const cm = new CanvasManager('test-canvas', 800, 600);
-                assert(cm.canvas !== null, 'Canvas not created');
-                assert(cm.zoom === 1, 'Default zoom should be 1');
-            });
+        runner.test('should notify subscribers on change', async () => {
+          let notified = false;
+          let receivedValue = null;
+          sm.subscribe('headline', (value) => { 
+            notified = true; 
+            receivedValue = value;
+          });
+          sm.set('headline', 'Changed');
+          await new Promise(r => setTimeout(r, 60));
+          TestRunner.assertTrue(notified);
+          TestRunner.assertEquals(receivedValue, 'Changed');
+        });
 
-            // Test 9: DemoHelper
-            test('DemoHelper generates images', () => {
-                const canvas = DemoHelper.generateRunningPerson(400, 300);
-                assert(canvas.width === 400, 'Width mismatch');
-                assert(canvas.height === 300, 'Height mismatch');
+        runner.test('should support batch updates', async () => {
+          let callCount = 0;
+          sm.subscribe('headline', () => callCount++);
+          sm.batchUpdate({
+            'headline': 'Batch1',
+            'subheading': 'Batch2'
+          });
+          await new Promise(r => setTimeout(r, 60));
+          TestRunner.assertEquals(sm.get('headline'), 'Batch1');
+          TestRunner.assertEquals(sm.get('subheading'), 'Batch2');
+        });
 
-                const img = DemoHelper.canvasToImage(canvas);
-                assert(img.src !== '', 'Image should have data URL');
-            });
+        runner.test('should persist to localStorage', () => {
+          sm.set('headline', 'Persist Test');
+          sm.persist();
+          const saved = localStorage.getItem('bce_state_v1');
+          TestRunner.assertNotNull(saved);
+          TestRunner.assertContains(saved, 'Persist Test');
+        });
 
-            // Test 10: Preset dimensions
-            test('Preset dimensions are correct', () => {
-                const ig = AssetPresets.getPreset('ig-square');
-                const dims = AssetPresets.getCanvasDimensions(ig);
-                assert(dims.width === 1080, 'Instagram width should be 1080');
-                assert(dims.height === 1080, 'Instagram height should be 1080');
+        runner.test('should hydrate from localStorage', () => {
+          sm.set('headline', 'Hydrate Test');
+          sm.persist();
+          const sm2 = new StateManager();
+          TestRunner.assertEquals(sm2.get('headline'), 'Hydrate Test');
+        });
 
-                const a4 = AssetPresets.getPreset('a4-portrait');
-                const a4Dims = AssetPresets.getCanvasDimensions(a4);
-                assert(a4Dims.width === 2480, 'A4 width at 300dpi should be 2480px');
-                assert(a4Dims.height === 3508, 'A4 height at 300dpi should be 3508px');
-            });
+        runner.test('should reset state', () => {
+          sm.set('headline', 'Reset Me');
+          sm.reset();
+          TestRunner.assertEquals(sm.get('headline'), '');
+          TestRunner.assertEquals(sm.get('currentStep'), 'explore');
+        });
 
-            // Summary
-            results.innerHTML += `<div class="test-result info" style="margin-top:20px;">
-                <strong>Results: ${passCount} passed, ${failCount} failed</strong>
-            </div>`;
-        }, 1000);
-    </script>
+        runner.test('should manage step navigation', () => {
+          sm.goToStep('compose');
+          TestRunner.assertEquals(sm.get('currentStep'), 'compose');
+          TestRunner.assertTrue(sm.get('completedSteps').includes('explore'));
+
+          sm.goToStep('refine');
+          TestRunner.assertEquals(sm.get('currentStep'), 'refine');
+        });
+
+        runner.test('should prevent invalid step navigation', () => {
+          sm.reset();
+          TestRunner.assertFalse(sm.canGoToStep('refine')); // Can't skip ahead
+          TestRunner.assertTrue(sm.canGoToStep('explore')); // Can stay
+        });
+      });
+
+      // === GRID SYSTEM TESTS ===
+      runner.describe('GridSystem', () => {
+        runner.test('should calculate square grid (1:1)', () => {
+          const grid = new GridSystem(1080, 1080);
+          TestRunner.assertEquals(grid.gridType, 'square');
+          TestRunner.assertEquals(grid.columns, 12);
+          TestRunner.assertEquals(grid.rows, 12);
+          TestRunner.assertTrue(grid.margin > 0);
+          TestRunner.assertTrue(grid.gutter > 0);
+          TestRunner.assertTrue(grid.cellWidth > 0);
+          TestRunner.assertTrue(grid.cellHeight > 0);
+        });
+
+        runner.test('should calculate landscape grid (16:9)', () => {
+          const grid = new GridSystem(1920, 1080);
+          TestRunner.assertEquals(grid.gridType, 'landscape');
+          TestRunner.assertEquals(grid.columns, 14);
+          TestRunner.assertEquals(grid.rows, 8);
+        });
+
+        runner.test('should calculate portrait grid (9:16)', () => {
+          const grid = new GridSystem(1080, 1920);
+          TestRunner.assertEquals(grid.gridType, 'portrait');
+          TestRunner.assertEquals(grid.columns, 8);
+          TestRunner.assertEquals(grid.rows, 14);
+        });
+
+        runner.test('should calculate margin as 5% of smallest dimension', () => {
+          const grid = new GridSystem(1000, 800);
+          const expectedMargin = 800 * 0.05;
+          TestRunner.assertApprox(grid.margin, expectedMargin, 0.1);
+        });
+
+        runner.test('should snap to grid cells', () => {
+          const grid = new GridSystem(1080, 1080);
+          const snapped = grid.snapToGrid(100, 100, 200, 150);
+          TestRunner.assertTrue(snapped.x >= grid.margin);
+          TestRunner.assertTrue(snapped.y >= grid.margin);
+          TestRunner.assertTrue(snapped.width > 0);
+          TestRunner.assertTrue(snapped.height > 0);
+        });
+
+        runner.test('should convert grid to pixel coordinates', () => {
+          const grid = new GridSystem(1080, 1080);
+          const pixel = grid.gridToPixel(0, 0, 2, 1);
+          TestRunner.assertEquals(pixel.x, grid.margin);
+          TestRunner.assertEquals(pixel.y, grid.margin);
+          TestRunner.assertApprox(pixel.width, grid.cellWidth * 2 + grid.gutter, 0.1);
+        });
+
+        runner.test('should convert pixel to grid coordinates', () => {
+          const grid = new GridSystem(1080, 1080);
+          const pixel = grid.gridToPixel(2, 3, 1, 1);
+          const gridPos = grid.pixelToGrid(pixel.x, pixel.y);
+          TestRunner.assertEquals(gridPos.col, 2);
+          TestRunner.assertEquals(gridPos.row, 3);
+        });
+
+        runner.test('should get logo zone in top-left', () => {
+          const grid = new GridSystem(1080, 1080);
+          const zone = grid.getLogoZone();
+          TestRunner.assertEquals(zone.x, grid.margin);
+          TestRunner.assertEquals(zone.y, grid.margin);
+          TestRunner.assertTrue(zone.width > 0);
+          TestRunner.assertTrue(zone.height > 0);
+        });
+
+        runner.test('should get tagline zone in bottom-left', () => {
+          const grid = new GridSystem(1080, 1080);
+          const zone = grid.getTaglineZone();
+          TestRunner.assertEquals(zone.x, grid.margin);
+          TestRunner.assertTrue(zone.y > grid.canvasHeight * 0.7);
+        });
+
+        runner.test('should get metadata zone in bottom-right', () => {
+          const grid = new GridSystem(1080, 1080);
+          const zone = grid.getMetadataZone();
+          TestRunner.assertTrue(zone.x > grid.canvasWidth * 0.6);
+          TestRunner.assertTrue(zone.y > grid.canvasHeight * 0.8);
+          TestRunner.assertEquals(zone.align, 'right');
+        });
+
+        runner.test('should calculate baseline unit as cellHeight/4', () => {
+          const grid = new GridSystem(1080, 1080);
+          TestRunner.assertApprox(grid.baselineUnit, grid.cellHeight / 4, 0.01);
+        });
+
+        runner.test('should snap to baseline grid', () => {
+          const grid = new GridSystem(1080, 1080);
+          const y = grid.margin + grid.baselineUnit * 2.7;
+          const snapped = grid.snapToBaseline(y);
+          const expected = grid.margin + grid.baselineUnit * 3;
+          TestRunner.assertApprox(snapped, expected, 0.1);
+        });
+
+        runner.test('should identify safe zones', () => {
+          const grid = new GridSystem(1080, 1080);
+          const safe = grid.getSafeZone();
+          TestRunner.assertEquals(safe.x, grid.margin);
+          TestRunner.assertEquals(safe.y, grid.margin);
+          TestRunner.assertTrue(safe.width < grid.canvasWidth);
+          TestRunner.assertTrue(safe.height < grid.canvasHeight);
+        });
+
+        runner.test('should check safe zone containment', () => {
+          const grid = new GridSystem(1080, 1080);
+          TestRunner.assertTrue(grid.isInSafeZone(grid.margin + 10, grid.margin + 10));
+          TestRunner.assertFalse(grid.isInSafeZone(0, 0));
+        });
+
+        runner.test('should get typography-safe regions', () => {
+          const grid = new GridSystem(1080, 1080);
+          const regions = grid.getSafeTextRegions();
+          TestRunner.assertTrue(regions.length > 0);
+          regions.forEach(r => {
+            TestRunner.assertTrue(r.x >= grid.margin);
+            TestRunner.assertTrue(r.y >= grid.margin);
+          });
+        });
+
+        runner.test('should generate grid lines', () => {
+          const grid = new GridSystem(1080, 1080);
+          const lines = grid.generateGridLines();
+          TestRunner.assertTrue(lines.length > 0);
+          lines.forEach(line => {
+            TestRunner.assertTrue(line.x1 !== undefined);
+            TestRunner.assertTrue(line.y1 !== undefined);
+          });
+        });
+
+        runner.test('should generate margin rectangle', () => {
+          const grid = new GridSystem(1080, 1080);
+          const rect = grid.generateMarginRect();
+          TestRunner.assertEquals(rect.left, grid.margin);
+          TestRunner.assertEquals(rect.top, grid.margin);
+        });
+      });
+
+      // === ASSET PRESETS TESTS ===
+      runner.describe('AssetPresets', () => {
+        runner.test('should return all presets', () => {
+          const presets = AssetPresets.getAllPresets();
+          const keys = Object.keys(presets);
+          TestRunner.assertTrue(keys.length >= 18);
+        });
+
+        runner.test('should get preset by ID', () => {
+          const preset = AssetPresets.getPreset('ig-square');
+          TestRunner.assertEquals(preset.id, 'ig-square');
+          TestRunner.assertEquals(preset.name, 'Instagram Square');
+          TestRunner.assertEquals(preset.width, 1080);
+          TestRunner.assertEquals(preset.height, 1080);
+          TestRunner.assertEquals(preset.category, 'social');
+        });
+
+        runner.test('should return default for unknown ID', () => {
+          const preset = AssetPresets.getPreset('nonexistent-id');
+          TestRunner.assertEquals(preset.id, 'ig-square');
+        });
+
+        runner.test('should filter by category', () => {
+          const social = AssetPresets.getCategoryPresets('social');
+          const web = AssetPresets.getCategoryPresets('web');
+          const presentation = AssetPresets.getCategoryPresets('presentation');
+
+          TestRunner.assertTrue(social.length > 0);
+          TestRunner.assertTrue(web.length > 0);
+          TestRunner.assertTrue(presentation.length > 0);
+
+          social.forEach(p => TestRunner.assertEquals(p.category, 'social'));
+          web.forEach(p => TestRunner.assertEquals(p.category, 'web'));
+        });
+
+        runner.test('should calculate canvas dimensions', () => {
+          const preset = AssetPresets.getPreset('ig-story');
+          const dims = AssetPresets.getCanvasDimensions(preset);
+          TestRunner.assertEquals(dims.width, 1080);
+          TestRunner.assertEquals(dims.height, 1920);
+        });
+
+        runner.test('should get aspect ratio', () => {
+          const preset = AssetPresets.getPreset('youtube-thumbnail');
+          TestRunner.assertEquals(AssetPresets.getAspectRatio(preset), '16:9');
+        });
+
+        runner.test('should calculate display size with scaling', () => {
+          const preset = AssetPresets.getPreset('web-hero');
+          const display = AssetPresets.getDisplaySize(preset);
+          TestRunner.assertTrue(display.width <= 800);
+          TestRunner.assertTrue(display.height <= 800);
+          TestRunner.assertTrue(display.scale <= 1);
+        });
+      });
+
+      // === COMPLIANCE ENGINE TESTS ===
+      runner.describe('ComplianceEngine', () => {
+        let sm, ce;
+
+        runner.beforeEach(() => {
+          sm = new StateManager();
+          sm.set('headline', 'Test Headline');
+          sm.set('subheading', 'Test Subheading');
+          sm.set('composition.treatment', {
+            color: '#1E49E2',
+            blendMode: 'multiply',
+            opacity: 0.85
+          });
+          sm.set('exportFormat', 'png');
+          sm.set('exportQuality', 95);
+          sm.set('exportDpi', 300);
+
+          // Mock canvas manager
+          const mockCanvas = {
+            canvas: { width: 1080, height: 1080, getObjects: () => [] },
+            objects: {},
+            gridSystem: new GridSystem(1080, 1080)
+          };
+
+          ce = new ComplianceEngine(sm, mockCanvas, mockCanvas.gridSystem);
+        });
+
+        runner.test('should initialize with all 10 checklists', () => {
+          const checklists = ['grid', 'logo', 'typography', 'motif', 'swoosh', 
+                             'image', 'treatment', 'accessibility', 'composition', 'export'];
+          checklists.forEach(name => {
+            TestRunner.assertNotNull(ce.checklists[name]);
+          });
+        });
+
+        runner.test('should start with PASS status', () => {
+          TestRunner.assertEquals(ce.status, 'PASS');
+        });
+
+        runner.test('should validate all categories', () => {
+          const report = ce.validateAll();
+          TestRunner.assertNotNull(report);
+          TestRunner.assertNotNull(report.categories);
+          TestRunner.assertTrue(report.score >= 0 && report.score <= 100);
+        });
+
+        runner.test('should calculate weighted score', () => {
+          const results = {
+            grid: { status: 'PASS', issues: [] },
+            logo: { status: 'WARNING', issues: [] },
+            typography: { status: 'PASS', issues: [] },
+            motif: { status: 'FAIL', issues: [] },
+            swoosh: { status: 'PASS', issues: [] },
+            image: { status: 'PASS', issues: [] },
+            treatment: { status: 'PASS', issues: [] },
+            accessibility: { status: 'WARNING', issues: [] },
+            composition: { status: 'PASS', issues: [] },
+            export: { status: 'PASS', issues: [] }
+          };
+          const score = ce.calculateScore(results);
+          TestRunner.assertTrue(score >= 20 && score <= 100);
+          TestRunner.assertTrue(score < 100); // Has failures
+        });
+
+        runner.test('should block export on FAIL', () => {
+          ce.status = 'FAIL';
+          TestRunner.assertFalse(ce.canExport());
+        });
+
+        runner.test('should allow export on PASS', () => {
+          ce.status = 'PASS';
+          TestRunner.assertTrue(ce.canExport());
+        });
+
+        runner.test('should allow export on WARNING', () => {
+          ce.status = 'WARNING';
+          TestRunner.assertTrue(ce.canExport());
+        });
+
+        runner.test('should get issues by category', () => {
+          ce.validateAll();
+          const issues = ce.getIssues('grid');
+          TestRunner.assertTrue(Array.isArray(issues));
+        });
+
+        runner.test('should get all issues', () => {
+          ce.validateAll();
+          const allIssues = ce.getAllIssues();
+          TestRunner.assertTrue(Array.isArray(allIssues));
+        });
+      });
+
+      // === CONSTRAINT ENGINE TESTS ===
+      runner.describe('ConstraintEngine', () => {
+        let grid, engine;
+
+        runner.beforeEach(() => {
+          grid = new GridSystem(1080, 1080);
+          engine = new ConstraintEngine(grid);
+        });
+
+        runner.test('should snap to grid with magnetic feel', () => {
+          const x = grid.margin + grid.cellWidth * 2.1;
+          const y = grid.margin + grid.cellHeight * 3.1;
+          const snapped = engine.snapToGrid(x, y);
+          TestRunner.assertTrue(Math.abs(snapped.x - x) < grid.cellWidth * 0.3);
+          TestRunner.assertTrue(Math.abs(snapped.y - y) < grid.cellHeight * 0.3);
+        });
+
+        runner.test('should snap to baseline', () => {
+          const y = grid.margin + grid.baselineUnit * 2.3;
+          const snapped = engine.snapToBaseline(y);
+          const expected = grid.snapToBaseline(y);
+          TestRunner.assertApprox(snapped, expected, 0.1);
+        });
+
+        runner.test('should constrain to margins', () => {
+          const x = -10;
+          const y = -10;
+          const w = 100;
+          const h = 100;
+          const constrained = engine.constrainToMargins(x, y, w, h);
+          TestRunner.assertTrue(constrained.x >= grid.margin);
+          TestRunner.assertTrue(constrained.y >= grid.margin);
+        });
+
+        runner.test('should apply elastic resistance', () => {
+          const value = 0;
+          const min = 50;
+          const max = 1000;
+          const result = engine.applyElasticResistance(value, min, max, 0.6);
+          TestRunner.assertTrue(result >= min);
+          TestRunner.assertTrue(result < value || result === min);
+        });
+
+        runner.test('should calculate magnetic snap', () => {
+          const value = 105;
+          const snapPoints = [0, 50, 100, 150];
+          const radius = 20;
+          const snapped = engine.calculateMagneticSnap(value, snapPoints, radius);
+          TestRunner.assertApprox(snapped, 100, 5);
+        });
+
+        runner.test('should validate positions', () => {
+          const violations = engine.validatePosition('headline', 0, 0, 100, 100);
+          TestRunner.assertTrue(violations.length > 0);
+          TestRunner.assertTrue(violations.some(v => v.type === 'margin'));
+        });
+
+        runner.test('should get constraint visuals', () => {
+          const visuals = engine.getConstraintVisuals('headline', 100, 100, 200, 50);
+          TestRunner.assertTrue(visuals.length > 0);
+          TestRunner.assertTrue(visuals.some(v => v.type === 'boundary'));
+        });
+      });
+
+      // === PERFORMANCE MONITOR TESTS ===
+      runner.describe('PerformanceMonitor', () => {
+        let pm;
+
+        runner.beforeEach(() => {
+          pm = new PerformanceMonitor({ enabled: true, showOverlay: false });
+        });
+
+        runner.afterEach(() => {
+          pm.destroy();
+        });
+
+        runner.test('should initialize with default values', () => {
+          TestRunner.assertEquals(pm.fps, 0);
+          TestRunner.assertEquals(pm.frameCount, 0);
+          TestRunner.assertTrue(pm.enabled);
+        });
+
+        runner.test('should track FPS over time', async () => {
+          await new Promise(r => setTimeout(r, 1200));
+          const report = pm.getReport();
+          TestRunner.assertTrue(report.fps.current >= 0);
+          TestRunner.assertTrue(report.fps.average >= 0);
+        });
+
+        runner.test('should record render times', () => {
+          pm.recordRenderTime(12);
+          pm.recordRenderTime(15);
+          pm.recordRenderTime(18);
+          const report = pm.getReport();
+          TestRunner.assertApprox(report.render.averageTime, 15, 0.1);
+          TestRunner.assertEquals(report.render.sampleCount, 3);
+        });
+
+        runner.test('should record validation times', () => {
+          pm.recordValidationTime(8);
+          pm.recordValidationTime(12);
+          const report = pm.getReport();
+          TestRunner.assertApprox(report.validation.averageTime, 10, 0.1);
+        });
+
+        runner.test('should record stage timings', () => {
+          pm.recordStageTiming('image_analysis', 500);
+          pm.recordStageTiming('image_analysis', 600);
+          pm.recordStageTiming('composing', 300);
+          const report = pm.getReport();
+          TestRunner.assertTrue(report.stages.image_analysis !== undefined);
+          TestRunner.assertEquals(report.stages.image_analysis.count, 2);
+        });
+
+        runner.test('should record interaction times', () => {
+          pm.recordInteractionTime(50, 'drag');
+          pm.recordInteractionTime(30, 'click');
+          const report = pm.getReport();
+          TestRunner.assertEquals(report.interactions.count, 2);
+        });
+
+        runner.test('should provide recommendations for slow renders', () => {
+          pm.recordRenderTime(25);
+          const report = pm.getReport();
+          const rec = report.recommendations.find(r => r.category === 'render');
+          TestRunner.assertNotNull(rec);
+          TestRunner.assertEquals(rec.severity, 'high');
+        });
+
+        runner.test('should provide recommendations for slow validation', () => {
+          pm.recordValidationTime(30);
+          const report = pm.getReport();
+          const rec = report.recommendations.find(r => r.category === 'validation');
+          TestRunner.assertNotNull(rec);
+        });
+
+        runner.test('should generate complete report', () => {
+          pm.recordRenderTime(10);
+          pm.recordValidationTime(5);
+          pm.recordStageTiming('test', 100);
+          const report = pm.getReport();
+          TestRunner.assertTrue(report.fps !== undefined);
+          TestRunner.assertTrue(report.render !== undefined);
+          TestRunner.assertTrue(report.validation !== undefined);
+          TestRunner.assertTrue(report.memory !== undefined);
+          TestRunner.assertTrue(report.stages !== undefined);
+          TestRunner.assertTrue(report.recommendations !== undefined);
+        });
+      });
+
+      // === OBJECT POOL TESTS ===
+      runner.describe('ObjectPool', () => {
+        let pool;
+
+        runner.beforeEach(() => {
+          pool = new ObjectPool({ canvasManager: null }, { enabled: true, maxPoolSize: 10 });
+        });
+
+        runner.afterEach(() => {
+          pool.destroy();
+        });
+
+        runner.test('should create new rect objects', () => {
+          const obj = pool.acquire('rect', { width: 50, height: 50, fill: 'red' });
+          TestRunner.assertNotNull(obj);
+          TestRunner.assertInstance(obj, fabric.Rect);
+          TestRunner.assertEquals(obj.width, 50);
+          TestRunner.assertEquals(obj.height, 50);
+        });
+
+        runner.test('should create new text objects', () => {
+          const obj = pool.acquire('text', { text: 'Hello', fontSize: 20 });
+          TestRunner.assertNotNull(obj);
+          TestRunner.assertInstance(obj, fabric.Text);
+          TestRunner.assertEquals(obj.text, 'Hello');
+        });
+
+        runner.test('should create new line objects', () => {
+          const obj = pool.acquire('line', { coords: [0, 0, 100, 100] });
+          TestRunner.assertNotNull(obj);
+          TestRunner.assertInstance(obj, fabric.Line);
+        });
+
+        runner.test('should create new circle objects', () => {
+          const obj = pool.acquire('circle', { radius: 30 });
+          TestRunner.assertNotNull(obj);
+          TestRunner.assertInstance(obj, fabric.Circle);
+        });
+
+        runner.test('should create new group objects', () => {
+          const obj = pool.acquire('group');
+          TestRunner.assertNotNull(obj);
+          TestRunner.assertInstance(obj, fabric.Group);
+        });
+
+        runner.test('should reuse released objects', () => {
+          const obj1 = pool.acquire('rect', { width: 50 });
+          pool.release(obj1, 'rect');
+          const obj2 = pool.acquire('rect', { width: 100 });
+          TestRunner.assertEquals(pool.getStats().reused, 1);
+          TestRunner.assertEquals(obj2.width, 100);
+        });
+
+        runner.test('should reset object properties on reuse', () => {
+          const obj1 = pool.acquire('rect', { width: 50, height: 50, fill: 'red' });
+          pool.release(obj1, 'rect');
+          const obj2 = pool.acquire('rect', { width: 200, height: 100, fill: 'blue' });
+          TestRunner.assertEquals(obj2.width, 200);
+          TestRunner.assertEquals(obj2.height, 100);
+        });
+
+        runner.test('should respect max pool size', () => {
+          const objects = [];
+          for (let i = 0; i < 15; i++) {
+            objects.push(pool.acquire('rect'));
+          }
+          objects.forEach(obj => pool.release(obj, 'rect'));
+          TestRunner.assertTrue(pool.getPoolSize('rect') <= 10);
+        });
+
+        runner.test('should track creation stats', () => {
+          pool.acquire('rect');
+          pool.acquire('text', { text: 'A' });
+          pool.acquire('line');
+          const stats = pool.getStats();
+          TestRunner.assertEquals(stats.created, 3);
+        });
+
+        runner.test('should prewarm pool', () => {
+          pool.prewarm('rect', 5);
+          TestRunner.assertEquals(pool.getPoolSize('rect'), 5);
+        });
+
+        runner.test('should clear all pools', () => {
+          pool.prewarm('rect', 3);
+          pool.prewarm('text', 3);
+          pool.clear();
+          TestRunner.assertEquals(pool.getPoolSize('rect'), 0);
+          TestRunner.assertEquals(pool.getPoolSize('text'), 0);
+        });
+
+        runner.test('should resize pool limit', () => {
+          pool.prewarm('rect', 10);
+          pool.setMaxPoolSize(5);
+          TestRunner.assertTrue(pool.getPoolSize('rect') <= 5);
+        });
+      });
+
+      // === ORCHESTRATION ENGINE V2 TESTS ===
+      runner.describe('OrchestrationEngineV2', () => {
+        let sm, grid, mockCanvas, orch;
+
+        runner.beforeEach(() => {
+          sm = new StateManager();
+          grid = new GridSystem(1080, 1080);
+          mockCanvas = {
+            canvas: { width: 1080, height: 1080 },
+            objects: {},
+            addBackgroundImage: () => Promise.resolve(),
+            addLogo: () => Promise.resolve(),
+            addTagline: () => {},
+            addMetadata: () => {},
+            addMotif: () => {},
+            applyColorTreatment: () => {},
+            requestRender: () => {},
+            setGridSystem: () => {},
+            drawGrid: () => {}
+          };
+          orch = new OrchestrationEngineV2(mockCanvas, grid, sm);
+        });
+
+        runner.test('should initialize in idle state', () => {
+          const state = orch.getState();
+          TestRunner.assertEquals(state.state, 'idle');
+          TestRunner.assertFalse(state.isRunning);
+        });
+
+        runner.test('should transition to valid states', () => {
+          TestRunner.assertTrue(orch.transitionTo('auto_composing'));
+          TestRunner.assertEquals(orch.getState().state, 'auto_composing');
+
+          TestRunner.assertTrue(orch.transitionTo('idle'));
+          TestRunner.assertEquals(orch.getState().state, 'idle');
+        });
+
+        runner.test('should reject invalid transitions', () => {
+          TestRunner.assertFalse(orch.transitionTo('exporting'));
+          TestRunner.assertFalse(orch.transitionTo('manual_editing'));
+        });
+
+        runner.test('should track state history', () => {
+          orch.transitionTo('auto_composing');
+          orch.transitionTo('idle');
+          orch.transitionTo('manual_editing');
+          const history = orch.getStateHistory();
+          TestRunner.assertEquals(history.length, 3);
+        });
+
+        runner.test('should calculate brand score with all pass', () => {
+          sm.set('checklistStatus', {
+            logo: 'pass', colors: 'pass', typography: 'pass',
+            imagery: 'pass', layout: 'pass'
+          });
+          const score = orch.calculateBrandScore();
+          TestRunner.assertEquals(score, 100);
+        });
+
+        runner.test('should calculate brand score with warnings', () => {
+          sm.set('checklistStatus', {
+            logo: 'pass', colors: 'warning', typography: 'pass',
+            imagery: 'pass', layout: 'pass'
+          });
+          const score = orch.calculateBrandScore();
+          TestRunner.assertEquals(score, 90);
+        });
+
+        runner.test('should calculate brand score with failures', () => {
+          sm.set('checklistStatus', {
+            logo: 'fail', colors: 'pass', typography: 'pass',
+            imagery: 'pass', layout: 'pass'
+          });
+          const score = orch.calculateBrandScore();
+          TestRunner.assertEquals(score, 80);
+        });
+
+        runner.test('should build metadata text', () => {
+          const brandSettings = {
+            url: 'kpmg.com',
+            date: 'Oct 2025',
+            cta: 'Learn More'
+          };
+          const text = orch.buildMetadataText(brandSettings);
+          TestRunner.assertContains(text, 'kpmg.com');
+          TestRunner.assertContains(text, 'Oct 2025');
+          TestRunner.assertContains(text, 'Learn More');
+        });
+
+        runner.test('should generate swoosh from motif', () => {
+          const motif = { left: 100, top: 100, width: 200, height: 140, scaleX: 1, scaleY: 1 };
+          const swoosh = orch.generateSwoosh(motif);
+          TestRunner.assertTrue(swoosh.x < motif.left);
+          TestRunner.assertTrue(swoosh.width > 0);
+          TestRunner.assertTrue(swoosh.height > 0);
+        });
+
+        runner.test('should reset to idle', () => {
+          orch.transitionTo('auto_composing');
+          orch.reset();
+          TestRunner.assertEquals(orch.getState().state, 'idle');
+          TestRunner.assertEquals(orch.getStateHistory().length, 0);
+        });
+
+        runner.test('should abort running pipeline', () => {
+          orch.transitionTo('auto_composing');
+          orch.abort();
+          TestRunner.assertFalse(orch.getState().isRunning);
+        });
+      });
+
+      // Run all tests
+      const results = await runner.run();
+      lastResults = results;
+
+      // Update UI
+      document.getElementById('stat-total').textContent = results.total;
+      document.getElementById('stat-pass').textContent = results.passed;
+      document.getElementById('stat-fail').textContent = results.failed;
+      document.getElementById('stat-duration').textContent = results.duration.toFixed(0) + 'ms';
+
+      const passPercent = results.total > 0 ? (results.passed / results.total) * 100 : 0;
+      document.getElementById('progress-fill').style.width = passPercent + '%';
+
+      // Render results
+      resultsEl.innerHTML = runner.generateHTMLReport();
+
+      document.getElementById('timestamp').textContent = 'Generated: ' + new Date().toLocaleString();
+
+      // Reset button
+      btn.disabled = false;
+      btnText.textContent = 'Run All Tests';
+
+      console.log('Test Results:', results);
+    }
+
+    function downloadReport() {
+      if (lastRunner) {
+        lastRunner.downloadReport('kpmg-bce-test-report.html');
+      }
+    }
+  </script>
 </body>
 </html>

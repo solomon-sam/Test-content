@@ -1,270 +1,435 @@
 /**
- * Color Picker Component
- * Overlay color changer with live preview
+ * Color Picker — Phase 3B Enhanced
+ * Overlay color changer with live preview, presets, and validation.
+ * Integrates with ComplianceEngine for treatment validation.
  */
 
 class ColorPicker {
   constructor(stateManager, canvasManager) {
     this.stateManager = stateManager;
     this.canvasManager = canvasManager;
-
-    this.popup = document.getElementById('color-picker-popup');
-    this.closeBtn = document.getElementById('picker-close');
-    this.cancelBtn = document.getElementById('btn-picker-cancel');
-    this.applyBtn = document.getElementById('btn-picker-apply');
-    this.colorInput = document.getElementById('custom-color');
-    this.blendSelect = document.getElementById('blend-mode');
-    this.opacitySlider = document.getElementById('opacity-slider');
-    this.opacityValue = document.getElementById('opacity-value');
-
     this.currentTreatment = null;
-    this.previewTreatment = null;
-
+    this.previewCanvas = null;
+    this.previewCtx = null;
     this.setupEventListeners();
   }
 
   setupEventListeners() {
-    if (this.closeBtn) {
-      this.closeBtn.addEventListener('click', () => this.hide());
-    }
-    if (this.cancelBtn) {
-      this.cancelBtn.addEventListener('click', () => this.hide());
-    }
-    if (this.applyBtn) {
-      this.applyBtn.addEventListener('click', () => this.apply());
-    }
-
     // Preset buttons
-    document.querySelectorAll('.preset-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+    document.addEventListener('click', (e) => {
+      const btn = e.target.closest('.preset-btn');
+      if (btn && btn.closest('#color-picker-popup')) {
+        document.querySelectorAll('#color-picker-popup .preset-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
-
-        const treatment = btn.dataset.treatment;
-        this.selectPreset(treatment);
-      });
+        this.onPresetSelect(btn.dataset.treatment);
+      }
     });
 
     // Custom color
-    if (this.colorInput) {
-      this.colorInput.addEventListener('input', (e) => {
-        this.previewTreatment = {
-          ...this.previewTreatment,
-          color: e.target.value
-        };
-        this.livePreview();
+    const customColor = document.getElementById('custom-color');
+    if (customColor) {
+      customColor.addEventListener('input', (e) => {
+        this.onCustomColorChange(e.target.value);
       });
     }
 
     // Blend mode
-    if (this.blendSelect) {
-      this.blendSelect.addEventListener('change', (e) => {
-        this.previewTreatment = {
-          ...this.previewTreatment,
-          blendMode: e.target.value
-        };
-        this.livePreview();
+    const blendMode = document.getElementById('blend-mode');
+    if (blendMode) {
+      blendMode.addEventListener('change', (e) => {
+        this.onBlendModeChange(e.target.value);
       });
     }
 
-    // Opacity
-    if (this.opacitySlider) {
-      this.opacitySlider.addEventListener('input', (e) => {
+    // Opacity slider
+    const opacitySlider = document.getElementById('opacity-slider');
+    if (opacitySlider) {
+      opacitySlider.addEventListener('input', (e) => {
         const val = e.target.value;
-        if (this.opacityValue) this.opacityValue.textContent = val + '%';
-        this.previewTreatment = {
-          ...this.previewTreatment,
-          opacity: val / 100
-        };
-        this.livePreview();
+        document.getElementById('opacity-value').textContent = val + '%';
+        this.onOpacityChange(parseInt(val) / 100);
       });
     }
 
-    // Hide on click outside
-    document.addEventListener('click', (e) => {
-      if (this.isVisible() && this.popup && !this.popup.contains(e.target)) {
-        const target = e.target.closest('.tooltip-action');
-        if (!target || !target.textContent.includes('Color')) {
-          this.hide();
+    // Apply button
+    document.getElementById('btn-picker-apply')?.addEventListener('click', () => {
+      this.apply();
+    });
+
+    // Cancel button
+    document.getElementById('btn-picker-cancel')?.addEventListener('click', () => {
+      this.cancel();
+    });
+
+    // Close button
+    document.getElementById('picker-close')?.addEventListener('click', () => {
+      this.cancel();
+    });
+
+    // Keyboard: Escape to close
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        const picker = document.getElementById('color-picker-popup');
+        if (picker && !picker.classList.contains('hidden')) {
+          this.cancel();
         }
       }
     });
   }
 
   /**
-   * Get preset treatments
-   */
-  getPresets() {
-    return [
-      { 
-        id: 'blue-multiply', 
-        name: 'Blue Multiply', 
-        color: '#1E49E2', 
-        blendMode: 'multiply', 
-        opacity: 0.85 
-      },
-      { 
-        id: 'cobalt-linear', 
-        name: 'Cobalt Linear Light', 
-        color: '#1E49E2', 
-        blendMode: 'hard-light', 
-        opacity: 0.85 
-      },
-      { 
-        id: 'pacific-gradient', 
-        name: 'Pacific Gradient', 
-        darkTone: '#1E49E2', 
-        lightTone: '#5FD7FF', 
-        blendMode: 'color', 
-        opacity: 1.0 
-      }
-    ];
-  }
-
-  /**
-   * Select preset
-   */
-  selectPreset(treatmentId) {
-    const presets = this.getPresets();
-    const preset = presets.find(p => p.id === treatmentId);
-    if (preset) {
-      this.previewTreatment = { ...preset };
-
-      // Update UI
-      if (this.colorInput) this.colorInput.value = preset.color || preset.darkTone || '#1E49E2';
-      if (this.blendSelect) this.blendSelect.value = preset.blendMode;
-      if (this.opacitySlider) {
-        this.opacitySlider.value = Math.round(preset.opacity * 100);
-        if (this.opacityValue) this.opacityValue.textContent = Math.round(preset.opacity * 100) + '%';
-      }
-
-      this.livePreview();
-    }
-  }
-
-  /**
-   * Show color picker
+   * Show color picker popup
    */
   show(currentTreatment) {
-    this.currentTreatment = currentTreatment || this.stateManager.get('composition.treatment');
-    this.previewTreatment = { ...this.currentTreatment };
+    this.currentTreatment = currentTreatment || this.getDefaultTreatment();
+    this.backupTreatment = { ...this.currentTreatment };
 
-    // Update UI with current values
-    if (this.colorInput) this.colorInput.value = this.currentTreatment.color || '#1E49E2';
-    if (this.blendSelect) this.blendSelect.value = this.currentTreatment.blendMode || 'multiply';
-    if (this.opacitySlider) {
-      this.opacitySlider.value = Math.round((this.currentTreatment.opacity || 0.85) * 100);
-      if (this.opacityValue) this.opacityValue.textContent = Math.round((this.currentTreatment.opacity || 0.85) * 100) + '%';
+    const picker = document.getElementById('color-picker-popup');
+    if (!picker) return;
+
+    // Set initial values
+    const customColor = document.getElementById('custom-color');
+    const blendMode = document.getElementById('blend-mode');
+    const opacitySlider = document.getElementById('opacity-slider');
+    const opacityValue = document.getElementById('opacity-value');
+
+    if (customColor) customColor.value = this.currentTreatment.color || '#1E49E2';
+    if (blendMode) blendMode.value = this.currentTreatment.blendMode || 'multiply';
+    if (opacitySlider) {
+      const opacity = Math.round((this.currentTreatment.opacity || 0.85) * 100);
+      opacitySlider.value = opacity;
+      if (opacityValue) opacityValue.textContent = opacity + '%';
     }
 
     // Select matching preset
-    const presets = this.getPresets();
-    const matching = presets.find(p => p.id === this.currentTreatment.id);
-    document.querySelectorAll('.preset-btn').forEach(btn => {
-      btn.classList.toggle('active', matching && btn.dataset.treatment === matching.id);
+    const presetId = this.getPresetId(this.currentTreatment);
+    document.querySelectorAll('#color-picker-popup .preset-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.treatment === presetId);
     });
 
-    if (this.popup) {
-      this.popup.classList.remove('hidden');
-    }
+    // Show
+    picker.classList.remove('hidden');
+
+    // Initialize preview
+    this.initPreview();
+    this.updatePreview();
   }
 
   /**
    * Hide color picker
    */
   hide() {
-    if (this.popup) {
-      this.popup.classList.add('hidden');
+    const picker = document.getElementById('color-picker-popup');
+    if (picker) picker.classList.add('hidden');
+  }
+
+  /**
+   * Get default treatment
+   */
+  getDefaultTreatment() {
+    return {
+      color: '#1E49E2',
+      blendMode: 'multiply',
+      opacity: 0.85,
+      name: 'Blue Multiply'
+    };
+  }
+
+  /**
+   * Get preset ID from treatment
+   */
+  getPresetId(treatment) {
+    const presets = this.getPresets();
+    for (const preset of presets) {
+      if (preset.color === treatment.color && preset.blendMode === treatment.blendMode) {
+        return preset.id;
+      }
     }
-    // Revert preview
-    if (this.currentTreatment) {
-      this.applyTreatment(this.currentTreatment);
+    return 'blue-multiply';
+  }
+
+  /**
+   * Get available presets
+   */
+  getPresets() {
+    return [
+      {
+        id: 'blue-multiply',
+        name: 'Blue Multiply',
+        color: '#1E49E2',
+        blendMode: 'multiply',
+        opacity: 1.0,
+        description: 'Dark images — deep blue overlay'
+      },
+      {
+        id: 'cobalt-linear',
+        name: 'Cobalt Linear Light',
+        color: '#1E49E2',
+        blendMode: 'linear-light',
+        opacity: 1.0,
+        description: 'Medium images — vibrant blue'
+      },
+      {
+        id: 'pacific-gradient',
+        name: 'Pacific Gradient',
+        color: '#1E49E2',
+        darkTone: '#1E49E2',
+        lightTone: '#5FD7FF',
+        blendMode: 'color',
+        opacity: 1.0,
+        description: 'Bright images — gradient map'
+      },
+      {
+        id: 'hard-light',
+        name: 'Hard Light Blue',
+        color: '#00338D',
+        blendMode: 'hard-light',
+        opacity: 0.8,
+        description: 'High contrast — deep navy'
+      },
+      {
+        id: 'overlay',
+        name: 'Blue Overlay',
+        color: '#1E49E2',
+        blendMode: 'overlay',
+        opacity: 0.7,
+        description: 'Subtle — gentle blue tint'
+      }
+    ];
+  }
+
+  /**
+   * Handle preset selection
+   */
+  onPresetSelect(presetId) {
+    const presets = this.getPresets();
+    const preset = presets.find(p => p.id === presetId);
+    if (!preset) return;
+
+    this.currentTreatment = {
+      ...this.currentTreatment,
+      color: preset.color,
+      blendMode: preset.blendMode,
+      opacity: preset.opacity,
+      name: preset.name
+    };
+
+    // Update UI
+    const customColor = document.getElementById('custom-color');
+    const blendMode = document.getElementById('blend-mode');
+    const opacitySlider = document.getElementById('opacity-slider');
+    const opacityValue = document.getElementById('opacity-value');
+
+    if (customColor) customColor.value = preset.color;
+    if (blendMode) blendMode.value = preset.blendMode;
+    if (opacitySlider) {
+      const opacity = Math.round(preset.opacity * 100);
+      opacitySlider.value = opacity;
+      if (opacityValue) opacityValue.textContent = opacity + '%';
+    }
+
+    this.updatePreview();
+    this.previewOnCanvas();
+  }
+
+  /**
+   * Handle custom color change
+   */
+  onCustomColorChange(hex) {
+    this.currentTreatment = {
+      ...this.currentTreatment,
+      color: hex,
+      name: 'Custom'
+    };
+
+    // Deselect presets
+    document.querySelectorAll('#color-picker-popup .preset-btn').forEach(btn => {
+      btn.classList.remove('active');
+    });
+
+    this.updatePreview();
+    this.previewOnCanvas();
+  }
+
+  /**
+   * Handle blend mode change
+   */
+  onBlendModeChange(mode) {
+    this.currentTreatment = {
+      ...this.currentTreatment,
+      blendMode: mode
+    };
+    this.updatePreview();
+    this.previewOnCanvas();
+  }
+
+  /**
+   * Handle opacity change
+   */
+  onOpacityChange(opacity) {
+    this.currentTreatment = {
+      ...this.currentTreatment,
+      opacity: opacity
+    };
+    this.updatePreview();
+    this.previewOnCanvas();
+  }
+
+  /**
+   * Initialize preview canvas
+   */
+  initPreview() {
+    const previewEl = document.getElementById('treatment-preview');
+    if (!previewEl) return;
+
+    this.previewCanvas = previewEl;
+    this.previewCtx = previewEl.getContext('2d');
+
+    // Set size
+    previewEl.width = 200;
+    previewEl.height = 120;
+  }
+
+  /**
+   * Update preview canvas
+   */
+  updatePreview() {
+    if (!this.previewCtx) return;
+
+    const ctx = this.previewCtx;
+    const w = this.previewCanvas.width;
+    const h = this.previewCanvas.height;
+
+    // Clear
+    ctx.clearRect(0, 0, w, h);
+
+    // Draw sample image (gradient simulating photo)
+    const imgGradient = ctx.createLinearGradient(0, 0, w, h);
+    imgGradient.addColorStop(0, '#e0e7ff');
+    imgGradient.addColorStop(0.5, '#c7d2fe');
+    imgGradient.addColorStop(1, '#a5b4fc');
+    ctx.fillStyle = imgGradient;
+    ctx.fillRect(0, 0, w, h);
+
+    // Draw motif window (clear area)
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(w * 0.3, h * 0.2, w * 0.4, h * 0.5);
+    ctx.clip();
+    // Draw "image" inside motif
+    const motifGradient = ctx.createLinearGradient(w * 0.3, h * 0.2, w * 0.7, h * 0.7);
+    motifGradient.addColorStop(0, '#818cf8');
+    motifGradient.addColorStop(1, '#4f46e5');
+    ctx.fillStyle = motifGradient;
+    ctx.fillRect(w * 0.3, h * 0.2, w * 0.4, h * 0.5);
+    ctx.restore();
+
+    // Apply treatment overlay
+    ctx.save();
+    ctx.globalCompositeOperation = this.getCanvasBlendMode(this.currentTreatment.blendMode);
+    ctx.globalAlpha = this.currentTreatment.opacity;
+    ctx.fillStyle = this.currentTreatment.color;
+    ctx.fillRect(0, 0, w, h);
+    ctx.restore();
+
+    // Draw border
+    ctx.strokeStyle = '#e2e8f0';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(0, 0, w, h);
+  }
+
+  /**
+   * Preview treatment on actual canvas (live)
+   */
+  previewOnCanvas() {
+    if (!this.canvasManager) return;
+
+    const treatment = this.canvasManager.objects.treatment;
+    if (treatment) {
+      treatment.set({
+        fill: this.currentTreatment.color,
+        opacity: this.currentTreatment.opacity,
+        globalCompositeOperation: this.getCanvasBlendMode(this.currentTreatment.blendMode)
+      });
+      this.canvasManager.requestRender();
     }
   }
 
   /**
-   * Apply treatment
+   * Convert blend mode to Canvas composite operation
+   */
+  getCanvasBlendMode(mode) {
+    const map = {
+      'multiply': 'multiply',
+      'linear-light': 'hard-light',
+      'hard-light': 'hard-light',
+      'color': 'color',
+      'overlay': 'overlay'
+    };
+    return map[mode] || 'multiply';
+  }
+
+  /**
+   * Apply treatment and validate
    */
   apply() {
-    if (this.previewTreatment) {
-      this.stateManager.set('composition.treatment', this.previewTreatment);
-      this.applyTreatment(this.previewTreatment);
+    // Update state
+    this.stateManager.set('composition.treatment', this.currentTreatment);
+
+    // Apply to canvas
+    if (this.canvasManager) {
+      this.canvasManager.applyColorTreatment(this.currentTreatment);
     }
+
+    // Trigger compliance validation
+    this.stateManager.set('composition.lastModified', Date.now());
+
+    // Hide picker
+    this.hide();
+
+    // Show success toast
+    this.showToast('Treatment applied', 'success');
+  }
+
+  /**
+   * Cancel and revert
+   */
+  cancel() {
+    // Revert to backup
+    if (this.backupTreatment && this.canvasManager) {
+      const treatment = this.canvasManager.objects.treatment;
+      if (treatment) {
+        treatment.set({
+          fill: this.backupTreatment.color,
+          opacity: this.backupTreatment.opacity,
+          globalCompositeOperation: this.getCanvasBlendMode(this.backupTreatment.blendMode)
+        });
+        this.canvasManager.requestRender();
+      }
+    }
+
     this.hide();
   }
 
   /**
-   * Live preview treatment
+   * Show toast notification
    */
-  livePreview() {
-    if (this.previewTreatment) {
-      this.applyTreatment(this.previewTreatment);
-    }
-  }
+  showToast(message, type = 'info') {
+    const container = document.getElementById('correction-toast-container');
+    if (!container) return;
 
-  /**
-   * Apply treatment to canvas
-   */
-  applyTreatment(treatment) {
-    // Remove existing treatment
-    const existing = this.canvasManager.canvas.getObjects().filter(o => o.name === 'color-treatment');
-    existing.forEach(o => this.canvasManager.canvas.remove(o));
-
-    // Create new treatment overlay
-    const overlay = new fabric.Rect({
-      left: 0,
-      top: 0,
-      width: this.canvasManager.canvas.width,
-      height: this.canvasManager.canvas.height,
-      fill: treatment.color || '#1E49E2',
-      opacity: treatment.opacity || 0.85,
-      selectable: false,
-      evented: false,
-      name: 'color-treatment'
-    });
-
-    // Set blend mode
-    const blendModes = {
-      'multiply': 'multiply',
-      'hard-light': 'hard-light',
-      'linear-light': 'hard-light',
-      'color': 'color',
-      'overlay': 'overlay'
-    };
-    overlay.globalCompositeOperation = blendModes[treatment.blendMode] || 'multiply';
-
-    // Handle gradient
-    if (treatment.id === 'pacific-gradient' || treatment.lightTone) {
-      const gradient = new fabric.Gradient({
-        type: 'linear',
-        coords: { x1: 0, y1: 0, x2: 0, y2: this.canvasManager.canvas.height },
-        colorStops: [
-          { offset: 0, color: treatment.lightTone || '#5FD7FF' },
-          { offset: 1, color: treatment.darkTone || '#1E49E2' }
-        ]
-      });
-      overlay.set('fill', gradient);
-      overlay.globalCompositeOperation = 'color';
+    const toast = document.createElement('div');
+    toast.className = 'correction-toast';
+    if (type === 'success') {
+      toast.style.borderLeftColor = '#22c55e';
     }
 
-    this.canvasManager.canvas.add(overlay);
+    toast.innerHTML = `
+      <div class="correction-toast-title">${message}</div>
+    `;
 
-    // Keep background behind treatment
-    if (this.canvasManager.objects.background) {
-      this.canvasManager.canvas.sendToBack(this.canvasManager.objects.background);
-    }
-
-    // Send treatment to just above background
-    overlay.moveTo(1);
-
-    this.canvasManager.canvas.renderAll();
-  }
-
-  /**
-   * Check if visible
-   */
-  isVisible() {
-    return this.popup && !this.popup.classList.contains('hidden');
+    container.appendChild(toast);
+    setTimeout(() => toast.remove(), 3000);
   }
 }
 

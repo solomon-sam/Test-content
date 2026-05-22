@@ -1,6 +1,7 @@
 /**
- * UI Controls
- * Handles all UI interactions for the 4-step KPMG wizard
+ * UI Controls — Phase 3 Enhanced
+ * Handles all UI interactions with compliance integration,
+ * edit mode toggle, live scoring display, and export gate.
  */
 
 class UIControls {
@@ -34,6 +35,12 @@ class UIControls {
     });
 
     document.getElementById('btn-continue-refine')?.addEventListener('click', () => {
+      // Phase 3: Check compliance before allowing export
+      const status = this.stateManager.get('complianceStatus');
+      if (status === 'FAIL') {
+        alert('Please resolve brand compliance issues before exporting. Check the Brand Check panel for details.');
+        return;
+      }
       this.stateManager.goToStep('export');
     });
 
@@ -144,7 +151,11 @@ class UIControls {
 
     // Brand score refresh
     document.getElementById('btn-refresh-score')?.addEventListener('click', () => {
-      this.app.calculateBrandScore();
+      if (this.app.complianceEngine) {
+        this.app.complianceEngine.validateAll();
+      } else {
+        this.app.calculateBrandScore();
+      }
     });
 
     // Canvas toolbar
@@ -170,6 +181,22 @@ class UIControls {
     document.getElementById('tool-analyze')?.addEventListener('click', () => {
       this.app.runAIAnalysis();
     });
+
+    // Phase 3: Edit Mode Toggle
+    document.getElementById('tool-edit-mode')?.addEventListener('click', () => {
+      const newMode = this.app.editModeController.toggleEditMode();
+      const btn = document.getElementById('tool-edit-mode');
+      if (btn) {
+        btn.classList.toggle('active', newMode === 'manual');
+        btn.title = newMode === 'manual' ? 'Exit Edit Mode' : 'Enter Edit Mode';
+      }
+
+      // Update canvas cursor
+      const wrapper = document.getElementById('canvas-wrapper');
+      if (wrapper) {
+        wrapper.classList.toggle('edit-mode-active', newMode === 'manual');
+      }
+    });
   }
 
   setupStateSubscriptions() {
@@ -186,6 +213,18 @@ class UIControls {
     // Checklist status
     this.stateManager.subscribe('checklistStatus', (status) => {
       this.updateChecklist(status);
+    });
+
+    // Phase 3: Compliance status
+    this.stateManager.subscribe('complianceStatus', (status) => {
+      this.updateComplianceStatus(status);
+    });
+
+    // Phase 3: Compliance report
+    this.stateManager.subscribe('complianceReport', (report) => {
+      if (report) {
+        this.updateComplianceDetails(report);
+      }
     });
 
     // Loading state
@@ -243,10 +282,21 @@ class UIControls {
       setTimeout(() => {
         this.app.canvasManager.fitToScreen();
       }, 100);
+
+      // Phase 3: Run initial compliance validation when entering refine
+      if (this.app.complianceEngine) {
+        setTimeout(() => {
+          this.app.complianceEngine.validateAll();
+        }, 200);
+      }
     }
 
     if (step === 'export') {
       this.updateExportPreview();
+
+      // Phase 3: Update export button state based on compliance
+      const status = this.stateManager.get('complianceStatus');
+      this.updateExportGate(status);
     }
   }
 
@@ -286,6 +336,15 @@ class UIControls {
       const circ = 163.4; // 2 * PI * 26
       const off = circ - (score / 100) * circ;
       overallCircle.style.strokeDashoffset = off;
+
+      // Color based on score
+      if (score >= 80) {
+        overallCircle.style.stroke = '#22c55e';
+      } else if (score >= 60) {
+        overallCircle.style.stroke = '#f59e0b';
+      } else {
+        overallCircle.style.stroke = '#ef4444';
+      }
     }
     if (overallDesc) {
       if (score >= 80) {
@@ -317,6 +376,102 @@ class UIControls {
         el.textContent = config.icon;
       }
     });
+  }
+
+  /**
+   * Phase 3: Update compliance status bar
+   */
+  updateComplianceStatus(status) {
+    const bar = document.getElementById('compliance-status-bar');
+    const indicator = document.getElementById('compliance-indicator');
+    const text = document.getElementById('compliance-text');
+
+    if (!bar || !indicator || !text) return;
+
+    // Remove all status classes
+    bar.classList.remove('status-pass', 'status-warning', 'status-fail');
+
+    switch (status) {
+      case 'PASS':
+        bar.classList.add('status-pass');
+        indicator.style.background = '#22c55e';
+        text.textContent = 'Brand Safe — All checks passed';
+        text.style.color = '#16a34a';
+        break;
+      case 'WARNING':
+        bar.classList.add('status-warning');
+        indicator.style.background = '#eab308';
+        text.textContent = 'Warning — Some items need attention';
+        text.style.color = '#ca8a04';
+        break;
+      case 'FAIL':
+        bar.classList.add('status-fail');
+        indicator.style.background = '#ef4444';
+        text.textContent = 'Invalid — Export blocked until resolved';
+        text.style.color = '#dc2626';
+        break;
+      default:
+        indicator.style.background = '#eab308';
+        text.textContent = 'Checking compliance...';
+        text.style.color = '#5A6B8A';
+    }
+  }
+
+  /**
+   * Phase 3: Update compliance details from report
+   */
+  updateComplianceDetails(report) {
+    if (!report || !report.categories) return;
+
+    // Update expanded checklist
+    for (const [key, result] of Object.entries(report.categories)) {
+      const el = document.getElementById('check-' + key);
+      if (el) {
+        const statusMap = {
+          PASS: { class: 'pass', icon: '✓' },
+          WARNING: { class: 'warning', icon: '!' },
+          FAIL: { class: 'fail', icon: '✕' }
+        };
+        const config = statusMap[result.status] || statusMap.PASS;
+        el.className = 'check-status ' + config.class;
+        el.textContent = config.icon;
+      }
+    }
+
+    // Update export gate
+    this.updateExportGate(report.overall);
+  }
+
+  /**
+   * Phase 3: Update export button based on compliance
+   */
+  updateExportGate(status) {
+    const exportBtn = document.getElementById('btn-export');
+    const refineContinue = document.getElementById('btn-continue-refine');
+
+    if (exportBtn) {
+      if (status === 'FAIL') {
+        exportBtn.disabled = true;
+        exportBtn.classList.add('disabled');
+        exportBtn.title = 'Fix compliance issues before exporting';
+      } else {
+        exportBtn.disabled = false;
+        exportBtn.classList.remove('disabled');
+        exportBtn.title = '';
+      }
+    }
+
+    if (refineContinue) {
+      if (status === 'FAIL') {
+        refineContinue.disabled = true;
+        refineContinue.classList.add('disabled');
+        refineContinue.title = 'Resolve compliance issues before continuing';
+      } else {
+        refineContinue.disabled = false;
+        refineContinue.classList.remove('disabled');
+        refineContinue.title = '';
+      }
+    }
   }
 
   /**
@@ -403,15 +558,20 @@ class UIControls {
         const dims = AssetPresets.getCanvasDimensions(preset);
         const ratio = this.getRatioLabel(dims.width, dims.height);
 
+        // Icon based on category
+        let iconSvg = '';
+        if (catKey === 'social') {
+          iconSvg = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="4" y="4" width="16" height="16" rx="2"/><circle cx="12" cy="12" r="3"/></svg>`;
+        } else if (catKey === 'web') {
+          iconSvg = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 8h20"/></svg>`;
+        } else {
+          iconSvg = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 3v18"/></svg>`;
+        }
+
         card.innerHTML = `
-          <div class="preset-card-icon">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-              <rect x="3" y="3" width="18" height="18" rx="2" 
-                style="width:${preset.width > preset.height ? 18 : 12}px; height:${preset.width > preset.height ? 12 : 18}px; x:${preset.width > preset.height ? 3 : 6}px; y:${preset.width > preset.height ? 6 : 3}px"/>
-            </svg>
-          </div>
-          <span class="preset-card-name">${preset.name}</span>
-          <span class="preset-card-ratio">${ratio}</span>
+          <div class="preset-card-icon">${iconSvg}</div>
+          <div class="preset-card-name">${preset.name}</div>
+          <div class="preset-card-ratio">${ratio}</div>
         `;
 
         card.addEventListener('click', () => {
@@ -446,13 +606,11 @@ class UIControls {
     const preview = document.getElementById('export-preview');
     if (!preview || !this.app.canvasManager) return;
 
-    // Get canvas data URL
     const dataUrl = this.app.canvasManager.toDataURL({
       format: 'png',
       quality: 0.8
     });
-
-    preview.innerHTML = `<img src="${dataUrl}" alt="Export preview">`;
+    preview.innerHTML = `<img src="${dataUrl}" alt="Export preview" style="max-width:100%;max-height:100%;object-fit:contain;">`;
   }
 
   /**
@@ -467,14 +625,26 @@ class UIControls {
 
     if (result) {
       if (preview) {
-        preview.innerHTML = `<img src="${result.dataUrl}" alt="Export">`;
+        preview.innerHTML = `<img src="${result.dataUrl}" alt="Export preview" style="max-width:100%;max-height:300px;border-radius:8px;">`;
       }
       if (details) {
         details.innerHTML = `
-          <div class="detail-row"><span>Format</span><span>${result.format.toUpperCase()}</span></div>
-          <div class="detail-row"><span>Dimensions</span><span>${result.dimensions.width} × ${result.dimensions.height}px</span></div>
-          <div class="detail-row"><span>DPI</span><span>${result.dpi}</span></div>
-          <div class="detail-row"><span>File size</span><span>${this.formatFileSize(result.blob?.size || 0)}</span></div>
+          <div class="detail-row">
+            <span>Format</span>
+            <span>${result.format.toUpperCase()}</span>
+          </div>
+          <div class="detail-row">
+            <span>Dimensions</span>
+            <span>${result.dimensions.width} × ${result.dimensions.height}px</span>
+          </div>
+          <div class="detail-row">
+            <span>DPI</span>
+            <span>${result.dpi}</span>
+          </div>
+          <div class="detail-row">
+            <span>File size</span>
+            <span>${this.formatFileSize(result.blob?.size || 0)}</span>
+          </div>
         `;
       }
     }
@@ -514,34 +684,6 @@ class UIControls {
         this.stateManager.set('loading', false);
       }, 500);
     }
-  }
-
-  /**
-   * Update orchestration stage
-   */
-  updateOrchestrationStage(stage, percent) {
-    // Stage indicators can be added here
-  }
-
-  /**
-   * Update AI results panel
-   */
-  updateAIResults(analysis) {
-    // Update AI panel with analysis results
-  }
-
-  /**
-   * Update validation panel
-   */
-  updateValidationPanel(validation) {
-    // Update validation UI
-  }
-
-  /**
-   * Update composition info
-   */
-  updateCompositionInfo(analysis) {
-    // Update composition info panel
   }
 }
 

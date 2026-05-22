@@ -1,117 +1,169 @@
 /**
- * Contextual Tooltip System
- * Minimal, sleek, glassmorphism tooltips for manual editing
+ * Contextual Tooltip — Phase 3B
+ * Glassmorphism tooltip system for manual editing mode.
+ * Provides element-specific actions with premium dark UI.
  */
 
 class ContextualTooltip {
   constructor() {
-    this.element = document.getElementById('contextual-tooltip');
-    this.titleEl = document.getElementById('tooltip-title');
-    this.actionsEl = document.getElementById('tooltip-actions');
-    this.closeBtn = document.getElementById('tooltip-close');
-
+    this.element = null;
     this.currentTarget = null;
     this.isVisible = false;
-
+    this.hideTimeout = null;
     this.setupEventListeners();
   }
 
   setupEventListeners() {
-    if (this.closeBtn) {
-      this.closeBtn.addEventListener('click', () => this.hide());
-    }
-
-    // Hide on click outside
+    // Close on outside click
     document.addEventListener('click', (e) => {
-      if (this.isVisible && !this.element.contains(e.target)) {
+      const tooltip = document.getElementById('contextual-tooltip');
+      if (tooltip && !tooltip.contains(e.target) && !e.target.closest('.canvas-container')) {
+        this.hide();
+      }
+    });
+
+    // Close button
+    document.addEventListener('click', (e) => {
+      if (e.target.closest('#tooltip-close')) {
+        this.hide();
+      }
+    });
+
+    // Keyboard: Escape to close
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
         this.hide();
       }
     });
   }
 
   /**
-   * Show tooltip for element
+   * Show tooltip for a specific element
    */
-  show(targetElement, config) {
-    if (!this.element || !config) return;
-
+  show(targetElement, config, position) {
     this.currentTarget = targetElement;
-    this.titleEl.textContent = config.title || 'Element';
+    this.isVisible = true;
+
+    const tooltip = document.getElementById('contextual-tooltip');
+    if (!tooltip) return;
+
+    // Update title
+    const titleEl = document.getElementById('tooltip-title');
+    if (titleEl) titleEl.textContent = config.title || 'Element';
 
     // Build actions
-    this.actionsEl.innerHTML = '';
-    if (config.actions) {
-      config.actions.forEach(action => {
+    const actionsEl = document.getElementById('tooltip-actions');
+    if (actionsEl) {
+      actionsEl.innerHTML = '';
+      (config.actions || []).forEach(action => {
         const btn = document.createElement('button');
         btn.className = 'tooltip-action';
+        btn.setAttribute('data-action', action.id);
         btn.innerHTML = `
-          <span class="tooltip-action-icon">${action.icon || '•'}</span>
-          <span>${action.label}</span>
+          <span class="tooltip-action-icon">${action.icon}</span>
+          <span class="tooltip-action-label">${action.label}</span>
         `;
         btn.addEventListener('click', () => {
-          if (action.onClick) action.onClick();
+          this.onActionClick(action.id, targetElement);
         });
-        this.actionsEl.appendChild(btn);
+        actionsEl.appendChild(btn);
       });
     }
 
     // Position
-    this.position(targetElement);
+    tooltip.style.left = position.x + 'px';
+    tooltip.style.top = position.y + 'px';
 
-    this.element.classList.remove('hidden');
-    this.isVisible = true;
+    tooltip.classList.remove('hidden');
+    tooltip.classList.add('visible');
+
+    // Clear hide timeout
+    if (this.hideTimeout) {
+      clearTimeout(this.hideTimeout);
+      this.hideTimeout = null;
+    }
   }
 
   /**
    * Hide tooltip
    */
   hide() {
-    if (this.element) {
-      this.element.classList.add('hidden');
-    }
     this.isVisible = false;
     this.currentTarget = null;
+
+    const tooltip = document.getElementById('contextual-tooltip');
+    if (tooltip) {
+      tooltip.classList.remove('visible');
+      tooltip.classList.add('hidden');
+    }
   }
 
   /**
-   * Position tooltip near target
+   * Auto-hide after delay
    */
-  position(targetElement) {
-    if (!targetElement || !this.element) return;
+  autoHide(delay = 5000) {
+    if (this.hideTimeout) clearTimeout(this.hideTimeout);
+    this.hideTimeout = setTimeout(() => this.hide(), delay);
+  }
 
-    const rect = targetElement.getBoundingRect ? 
-      targetElement.getBoundingRect() : 
-      targetElement.getBoundingClientRect();
+  /**
+   * Handle action click
+   */
+  onActionClick(actionId, targetElement) {
+    // Dispatch custom event for EditModeController to handle
+    const event = new CustomEvent('tooltip-action', {
+      detail: { actionId, targetElement }
+    });
+    document.dispatchEvent(event);
+  }
 
-    // Get canvas position
-    const canvasEl = document.getElementById('main-canvas');
-    const canvasRect = canvasEl ? canvasEl.getBoundingClientRect() : { left: 0, top: 0 };
+  /**
+   * Calculate optimal position near element
+   */
+  calculatePosition(element, canvasRect, tooltipWidth = 200, tooltipHeight = 180) {
+    const objRect = element.getBoundingRect ? element.getBoundingRect() : {
+      left: element.left || 0,
+      top: element.top || 0,
+      width: (element.width || 0) * (element.scaleX || 1),
+      height: (element.height || 0) * (element.scaleY || 1)
+    };
 
-    let left = canvasRect.left + rect.left + rect.width + 16;
-    let top = canvasRect.top + rect.top;
+    const padding = 16;
+    const viewportW = window.innerWidth;
+    const viewportH = window.innerHeight;
 
-    // Keep in viewport
-    const tooltipWidth = 200;
-    const tooltipHeight = 150;
+    // Default: right side
+    let x = canvasRect.left + objRect.left + objRect.width + padding;
+    let y = canvasRect.top + objRect.top;
 
-    if (left + tooltipWidth > window.innerWidth - 20) {
-      left = canvasRect.left + rect.left - tooltipWidth - 16;
+    // Check right overflow
+    if (x + tooltipWidth > viewportW - 20) {
+      x = canvasRect.left + objRect.left - tooltipWidth - padding;
     }
-    if (top + tooltipHeight > window.innerHeight - 20) {
-      top = window.innerHeight - tooltipHeight - 20;
-    }
-    if (top < 20) top = 20;
 
-    this.element.style.left = left + 'px';
-    this.element.style.top = top + 'px';
+    // Check bottom overflow
+    if (y + tooltipHeight > viewportH - 20) {
+      y = viewportH - tooltipHeight - 20;
+    }
+
+    // Check top overflow
+    if (y < 20) y = 20;
+
+    return { x, y };
   }
 
   /**
    * Update position during drag
    */
-  updatePosition() {
-    if (this.isVisible && this.currentTarget) {
-      this.position(this.currentTarget);
+  updatePosition(element, canvasRect) {
+    if (!this.isVisible || !this.currentTarget) return;
+    if (this.currentTarget !== element) return;
+
+    const pos = this.calculatePosition(element, canvasRect);
+    const tooltip = document.getElementById('contextual-tooltip');
+    if (tooltip) {
+      tooltip.style.left = pos.x + 'px';
+      tooltip.style.top = pos.y + 'px';
     }
   }
 }

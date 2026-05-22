@@ -1,7 +1,9 @@
 /**
- * BrandCompositionApp — Phase 4 Integrated
+ * BrandCompositionApp — Phase 4 Integrated (FIXED)
  * Main application controller with OrchestrationEngineV2,
  * PerformanceMonitor, ObjectPool, and Export Gate Enforcement.
+ * 
+ * FIXED: All engine class names and signatures match the fixed engine files.
  */
 
 class BrandCompositionApp {
@@ -106,8 +108,8 @@ class BrandCompositionApp {
    * Phase 4: Initialize all sub-engines and inject into OrchestrationEngineV2
    */
   initEngines() {
-    this.aiEngine = new AIAnalysis();
-    this.compositionEngine = new CompositionEngine(this.canvasManager, this.gridSystem);
+    this.aiEngine = new AIAnalysisEngine();
+    this.compositionEngine = new CompositionEngine(this.canvasManager.canvas, this.gridSystem);
     this.typographyEngine = new TypographyCompositionEngine(this.gridSystem, this.stateManager);
     this.accessibilityEngine = new AccessibilityEngine(this.canvasManager, this.stateManager);
     this.complianceEngine = new ComplianceEngine(
@@ -440,9 +442,12 @@ class BrandCompositionApp {
         i.severity === 'critical' || i.severity === 'hard'
       );
 
-      let failMessage = 'Cannot export: The following issues must be resolved:\n\n';
+      let failMessage = 'Cannot export: The following issues must be resolved:
+
+';
       for (const issue of criticalIssues) {
-        failMessage += `• ${issue.category.toUpperCase()}: ${issue.message}\n`;
+        failMessage += `• ${issue.category.toUpperCase()}: ${issue.message}
+`;
       }
 
       alert(failMessage);
@@ -486,7 +491,7 @@ class BrandCompositionApp {
     const details = document.getElementById('export-details');
 
     if (preview) {
-      preview.innerHTML = `<img src="${result.dataUrl}" alt="Export preview">`;
+      preview.innerHTML = `<img src="${result.dataUrl}" alt="Export preview" style="max-width: 100%; max-height: 300px; object-fit: contain;">`;
     }
 
     if (details) {
@@ -496,12 +501,30 @@ class BrandCompositionApp {
       const preset = this.currentPreset ? AssetPresets.getPreset(this.currentPreset) : null;
 
       details.innerHTML = `
-        <div class="detail-row"><span>Format</span><span>${format.toUpperCase()}</span></div>
-        <div class="detail-row"><span>Dimensions</span><span>${preset ? preset.width + 'x' + preset.height : '1080x1080'}</span></div>
-        <div class="detail-row"><span>DPI</span><span>${dpi}</span></div>
-        <div class="detail-row"><span>Quality</span><span>${quality}%</span></div>
-        <div class="detail-row"><span>File Size</span><span>${this.formatFileSize(result.fileSize || 0)}</span></div>
-        <div class="detail-row"><span>Brand Score</span><span>${this.stateManager.get('brandScore') || 0}/100</span></div>
+        <div class="export-detail-item">
+          <span class="detail-label">Format</span>
+          <span class="detail-value">${format.toUpperCase()}</span>
+        </div>
+        <div class="export-detail-item">
+          <span class="detail-label">Dimensions</span>
+          <span class="detail-value">${preset ? preset.width + 'x' + preset.height : '1080x1080'}</span>
+        </div>
+        <div class="export-detail-item">
+          <span class="detail-label">DPI</span>
+          <span class="detail-value">${dpi}</span>
+        </div>
+        <div class="export-detail-item">
+          <span class="detail-label">Quality</span>
+          <span class="detail-value">${quality}%</span>
+        </div>
+        <div class="export-detail-item">
+          <span class="detail-label">File Size</span>
+          <span class="detail-value">${this.formatFileSize(result.fileSize || 0)}</span>
+        </div>
+        <div class="export-detail-item">
+          <span class="detail-label">Brand Score</span>
+          <span class="detail-value">${this.stateManager.get('brandScore') || 0}/100</span>
+        </div>
       `;
     }
 
@@ -605,18 +628,18 @@ class BrandCompositionApp {
     let iconSvg = '';
 
     if (aspectRatio > 1.2) {
-      iconSvg = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/></svg>`;
+      iconSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/></svg>`;
     } else if (aspectRatio < 0.8) {
-      iconSvg = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="2" width="8" height="20" rx="2"/></svg>`;
+      iconSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="2" width="12" height="20" rx="2"/></svg>`;
     } else {
-      iconSvg = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>`;
+      iconSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>`;
     }
 
     return `
       <div class="preset-card" data-preset="${preset.id}">
-        <div class="preset-card-icon">${iconSvg}</div>
-        <div class="preset-card-name">${preset.name}</div>
-        <div class="preset-card-ratio">${preset.ratio || AssetPresets.getAspectRatio(preset)}</div>
+        <div class="preset-icon">${iconSvg}</div>
+        <div class="preset-name">${preset.name}</div>
+        <div class="preset-dims">${preset.ratio || AssetPresets.getAspectRatio(preset)}</div>
       </div>
     `;
   }
@@ -687,7 +710,7 @@ class BrandCompositionApp {
             preview.className = 'upload-preview';
             uploadCard.appendChild(preview);
           }
-          preview.innerHTML = `<img src="${src}" alt="Uploaded image">`;
+          preview.innerHTML = `<img src="${src}" alt="Preview" style="width: 100%; height: 100%; object-fit: cover;">`;
         }
         resolve(img);
       };

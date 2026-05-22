@@ -1,751 +1,517 @@
 /**
- * Typography Composition Intelligence System
- * Fully automated editorial modular typography with zero manual editing
+ * Typography Composition Engine
+ * Intelligent auto-typography from 2 inputs
+ * Semantic tokenization, optical balancing, editorial line grouping, line offsets
  */
 
 class TypographyCompositionEngine {
-    constructor(gridSystem, constraints) {
-        this.grid = gridSystem;
-        this.constraints = constraints;
+  constructor(gridSystem, stateManager) {
+    this.gridSystem = gridSystem;
+    this.stateManager = stateManager;
 
-        // Font definitions
-        this.fonts = {
-            headline: "'KPMG Bold', 'Arial Black', 'Helvetica Neue', Arial, sans-serif",
-            subheading: "'Univers', 'Helvetica Neue', Arial, sans-serif",
-            metadata: "'Univers', 'Helvetica Neue', Arial, sans-serif"
-        };
+    // Font configuration
+    this.fonts = {
+      headline: {
+        family: "'KPMG Bold', 'Arial Black', 'Helvetica Neue', Arial, sans-serif",
+        weight: 'bold',
+        baseSize: 36,
+        lineHeight: 1.15,
+        letterSpacing: -0.5
+      },
+      subheading: {
+        family: "'Univers', 'Helvetica Neue', Arial, sans-serif",
+        weight: 'normal',
+        baseSize: 18,
+        lineHeight: 1.3,
+        letterSpacing: 0
+      },
+      metadata: {
+        family: "'Univers', 'Helvetica Neue', Arial, sans-serif",
+        weight: 'normal',
+        baseSize: 12,
+        lineHeight: 1.4,
+        letterSpacing: 0.5
+      }
+    };
 
-        // Character optical weights for line balancing
-        this.characterWeights = {
-            'W': 1.3, 'M': 1.3, 'w': 1.3, 'm': 1.3,
-            'A': 1.15, 'B': 1.15, 'C': 1.15, 'D': 1.15, 'E': 1.15, 'F': 1.15,
-            'G': 1.15, 'H': 1.15, 'K': 1.15, 'N': 1.15, 'O': 1.15, 'P': 1.15,
-            'Q': 1.15, 'R': 1.15, 'T': 1.15, 'U': 1.15, 'V': 1.15, 'X': 1.15, 'Y': 1.15,
-            'a': 1.0, 'b': 1.0, 'c': 1.0, 'd': 1.0, 'e': 1.0, 'f': 1.0, 'g': 1.0,
-            'h': 1.0, 'i': 1.0, 'j': 1.0, 'k': 1.0, 'l': 1.0, 'n': 1.0, 'o': 1.0,
-            'p': 1.0, 'q': 1.0, 'r': 1.0, 's': 1.0, 't': 1.0, 'u': 1.0, 'v': 1.0,
-            'x': 1.0, 'y': 1.0, 'z': 1.0,
-            'I': 0.8, 'J': 0.8, 'L': 0.8, 'S': 0.8, 'Z': 0.8,
-            'i': 0.8, 'l': 0.8, 'f': 0.8, 't': 0.8, 'j': 0.8,
-            '.': 0.5, ',': 0.5, '!': 0.5, '?': 0.5, ':': 0.5, ';': 0.5,
-            '-': 0.5, '–': 0.5, '—': 0.8, ' ': 0.4, "'": 0.3, '"': 0.4
-        };
+    // Character weight map for optical width calculation
+    this.characterWeights = this.buildCharacterWeights();
+  }
 
-        // Scoring weights
-        this.scoringWeights = {
-            readability: 0.25,
-            hierarchyStrength: 0.20,
-            opticalBalance: 0.20,
-            gridHarmony: 0.15,
-            motifCompatibility: 0.10,
-            negativeSpacePreservation: 0.05,
-            brandCompliance: 0.05
-        };
-
-        // Baseline unit
-        this.baselineUnit = this.grid.cellHeight / 4;
+  /**
+   * Main entry: compose typography from headline + subheading
+   */
+  compose(headlineText, subheadingText, motif, imageAnalysis) {
+    if (!headlineText || headlineText.trim().length === 0) {
+      return null;
     }
 
-    /**
-     * Main composition method
-     * Takes headline and subheading, returns complete typography composition
-     */
-    compose(headlineText, subheadingText, motif, imageAnalysis) {
-        console.log('[Typography] Starting composition...');
+    // Tokenize headline
+    const tokens = this.tokenize(headlineText);
 
-        // Generate multiple headline compositions
-        const headlineCandidates = this.generateHeadlineCandidates(headlineText, motif, imageAnalysis);
+    // Generate semantic groupings
+    const groupings = this.generateSemanticGroupings(tokens);
 
-        // Generate subheading compositions for each headline
-        const fullCompositions = headlineCandidates.map(headline => {
-            const subheading = this.composeSubheading(subheadingText, headline, motif);
-            const metadata = this.composeMetadata(headline, subheading, motif);
+    // Compose headline with editorial layout
+    const headline = this.composeHeadline(groupings, motif, imageAnalysis);
 
-            return {
-                headline,
-                subheading,
-                metadata,
-                score: 0,
-                valid: true,
-                issues: []
-            };
+    // Compose subheading
+    const subheading = subheadingText ? 
+      this.composeSubheading(subheadingText, headline, motif) : null;
+
+    // Compose metadata
+    const metadata = this.composeMetadata(headline, subheading, motif);
+
+    // Calculate line offsets for editorial stagger
+    const offsets = this.calculateLineOffsets(headline.lines, motif, imageAnalysis);
+    headline.lines = this.applyOffsets(headline.lines, offsets);
+
+    // Validate and score
+    const validation = this.validateComposition({ headline, subheading, metadata }, motif);
+    const score = this.scoreComposition({ headline, subheading, metadata }, motif, imageAnalysis);
+
+    return {
+      headline,
+      subheading,
+      metadata,
+      validation,
+      score,
+      tokens,
+      groupings
+    };
+  }
+
+  /**
+   * Tokenize text into semantic units
+   */
+  tokenize(text) {
+    // Split by spaces but preserve punctuation
+    const rawTokens = text.trim().split(/\s+/);
+
+    return rawTokens.map((token, index) => ({
+      text: token,
+      index,
+      isPunctuation: /^[.,;:!?]+$/.test(token),
+      isCapitalized: /^[A-Z]/.test(token),
+      isAllCaps: /^[A-Z]+$/.test(token),
+      length: token.length,
+      weight: this.getTokenWeight(token)
+    }));
+  }
+
+  /**
+   * Generate semantic groupings (phrases that stay together)
+   */
+  generateSemanticGroupings(tokens) {
+    const groupings = [];
+    let currentGroup = [];
+
+    tokens.forEach((token, i) => {
+      currentGroup.push(token);
+
+      // Break group at punctuation or natural pause points
+      const shouldBreak = 
+        token.isPunctuation ||
+        (i < tokens.length - 1 && tokens[i + 1].isCapitalized && currentGroup.length >= 2) ||
+        currentGroup.length >= 4 ||
+        this.getGroupWeight(currentGroup) > 15;
+
+      if (shouldBreak && currentGroup.length > 0) {
+        groupings.push([...currentGroup]);
+        currentGroup = [];
+      }
+    });
+
+    if (currentGroup.length > 0) {
+      groupings.push(currentGroup);
+    }
+
+    return groupings;
+  }
+
+  /**
+   * Compose headline with editorial line breaking
+   */
+  composeHeadline(groupings, motif, imageAnalysis) {
+    const grid = this.gridSystem;
+    const maxWidth = this.getHeadlineMaxWidth(motif);
+    const maxLines = 6; // KPMG rule: max 6 grid modules height
+
+    const lines = [];
+    let currentLine = [];
+    let currentWidth = 0;
+
+    // Flatten groupings into words
+    const words = groupings.flat();
+
+    words.forEach((word, i) => {
+      const wordWidth = this.calculateOpticalWidth(word.text, this.fonts.headline.baseSize);
+      const spaceWidth = currentLine.length > 0 ? 
+        this.calculateOpticalWidth(' ', this.fonts.headline.baseSize) : 0;
+
+      if (currentWidth + spaceWidth + wordWidth > maxWidth && currentLine.length > 0) {
+        // Start new line
+        lines.push({
+          text: currentLine.map(w => w.text).join(' '),
+          words: [...currentLine],
+          width: currentWidth,
+          height: this.fonts.headline.baseSize * this.fonts.headline.lineHeight
         });
+        currentLine = [word];
+        currentWidth = wordWidth;
+      } else {
+        currentLine.push(word);
+        currentWidth += spaceWidth + wordWidth;
+      }
+    });
 
-        // Validate each composition
-        fullCompositions.forEach(comp => {
-            this.validateComposition(comp, motif);
+    // Add remaining words
+    if (currentLine.length > 0) {
+      lines.push({
+        text: currentLine.map(w => w.text).join(' '),
+        words: [...currentLine],
+        width: currentWidth,
+        height: this.fonts.headline.baseSize * this.fonts.headline.lineHeight
+      });
+    }
+
+    // Apply font size scaling based on line count
+    const fontSize = this.calculateOptimalFontSize(lines.length, grid);
+
+    // Recalculate widths with scaled font
+    lines.forEach(line => {
+      line.width = this.calculateOpticalWidth(line.text, fontSize);
+      line.height = fontSize * this.fonts.headline.lineHeight;
+    });
+
+    return {
+      lines,
+      fontSize,
+      fontFamily: this.fonts.headline.family,
+      fontWeight: this.fonts.headline.weight,
+      lineHeight: this.fonts.headline.lineHeight,
+      letterSpacing: this.fonts.headline.letterSpacing,
+      totalHeight: lines.reduce((sum, l) => sum + l.height, 0),
+      maxWidth: Math.max(...lines.map(l => l.width))
+    };
+  }
+
+  /**
+   * Compose subheading
+   */
+  composeSubheading(text, headline, motif) {
+    const grid = this.gridSystem;
+    const maxWidth = this.getSubheadingMaxWidth(motif, headline);
+
+    const fontSize = Math.max(14, Math.min(24, headline.fontSize * 0.5));
+
+    // Simple line break for subheading (no stagger)
+    const words = text.trim().split(/\s+/);
+    const lines = [];
+    let currentLine = [];
+    let currentWidth = 0;
+
+    words.forEach(word => {
+      const wordWidth = this.calculateOpticalWidth(word, fontSize);
+      const spaceWidth = currentLine.length > 0 ? 
+        this.calculateOpticalWidth(' ', fontSize) : 0;
+
+      if (currentWidth + spaceWidth + wordWidth > maxWidth && currentLine.length > 0) {
+        lines.push({
+          text: currentLine.join(' '),
+          width: currentWidth,
+          height: fontSize * this.fonts.subheading.lineHeight
         });
+        currentLine = [word];
+        currentWidth = wordWidth;
+      } else {
+        currentLine.push(word);
+        currentWidth += spaceWidth + wordWidth;
+      }
+    });
 
-        // Filter valid compositions
-        const validCompositions = fullCompositions.filter(c => c.valid);
-
-        if (validCompositions.length === 0) {
-            console.warn('[Typography] No valid compositions, using best invalid');
-            // Use best invalid and flag issues
-            fullCompositions.sort((a, b) => b.score - a.score);
-            return this.finalizeComposition(fullCompositions[0]);
-        }
-
-        // Score valid compositions
-        validCompositions.forEach(comp => {
-            comp.score = this.scoreComposition(comp, motif, imageAnalysis);
-        });
-
-        // Sort by score and select best
-        validCompositions.sort((a, b) => b.score - a.score);
-
-        console.log('[Typography] Generated', validCompositions.length, 'valid compositions');
-        console.log('[Typography] Best score:', validCompositions[0].score.toFixed(2));
-
-        return this.finalizeComposition(validCompositions[0]);
+    if (currentLine.length > 0) {
+      lines.push({
+        text: currentLine.join(' '),
+        width: currentWidth,
+        height: fontSize * this.fonts.subheading.lineHeight
+      });
     }
 
-    /**
-     * Generate headline candidates with different line groupings
-     */
-    generateHeadlineCandidates(text, motif, imageAnalysis) {
-        const candidates = [];
+    return {
+      lines,
+      fontSize,
+      fontFamily: this.fonts.subheading.family,
+      fontWeight: this.fonts.subheading.weight,
+      lineHeight: this.fonts.subheading.lineHeight,
+      totalHeight: lines.reduce((sum, l) => sum + l.height, 0),
+      maxWidth: Math.max(...lines.map(l => l.width), 0)
+    };
+  }
 
-        // Clean and tokenize
-        const words = this.tokenize(text);
-        if (words.length === 0) return candidates;
+  /**
+   * Compose metadata (tagline, URL, date)
+   */
+  composeMetadata(headline, subheading, motif) {
+    const brandSettings = {
+      tagline: 'KPMG. Make the Difference.',
+      url: 'kpmg.com',
+      date: new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+    };
 
-        // Generate different line groupings
-        const groupings = this.generateSemanticGroupings(words);
+    return {
+      tagline: {
+        text: brandSettings.tagline,
+        fontSize: Math.max(10, Math.min(16, this.gridSystem.canvasWidth / 100)),
+        fontFamily: this.fonts.metadata.family
+      },
+      url: {
+        text: brandSettings.url,
+        fontSize: Math.max(9, Math.min(12, this.gridSystem.canvasWidth / 120)),
+        fontFamily: this.fonts.metadata.family
+      },
+      date: {
+        text: brandSettings.date,
+        fontSize: Math.max(9, Math.min(12, this.gridSystem.canvasWidth / 120)),
+        fontFamily: this.fonts.metadata.family
+      }
+    };
+  }
 
-        groupings.forEach(grouping => {
-            // Calculate font size based on available space
-            const fontSize = this.calculateHeadlineFontSize(grouping, motif);
+  /**
+   * Calculate line offsets for editorial stagger
+   * KPMG rule: max 3 grid units offset
+   */
+  calculateLineOffsets(lines, motif, imageAnalysis) {
+    const grid = this.gridSystem;
+    const maxOffset = grid.cellWidth * 3; // Max 3 grid units
 
-            // Calculate line heights and spacing
-            const lineHeight = fontSize * 1.1;
-            const lineSpacing = fontSize * 0.25;
+    // Determine offset direction based on motif position
+    let direction = 1; // Rightward stagger
 
-            // Check height constraint: max 6 grid modules
-            const totalHeight = (grouping.length * lineHeight) + ((grouping.length - 1) * lineSpacing);
-            const maxHeight = this.grid.cellHeight * 6;
+    if (motif) {
+      const motifCenter = motif.x + motif.width / 2;
+      const canvasCenter = grid.canvasWidth / 2;
 
-            if (totalHeight > maxHeight) {
-                // Reduce font size
-                const scaleFactor = maxHeight / totalHeight;
-                const adjustedFontSize = Math.max(16, fontSize * scaleFactor * 0.9);
-
-                candidates.push(this.buildHeadlineCandidate(
-                    grouping, adjustedFontSize, motif, imageAnalysis
-                ));
-            } else {
-                candidates.push(this.buildHeadlineCandidate(
-                    grouping, fontSize, motif, imageAnalysis
-                ));
-            }
-        });
-
-        // Also try single-line if text is short
-        if (words.length <= 3) {
-            const singleLine = [words.join(' ')];
-            const fontSize = this.calculateHeadlineFontSize(singleLine, motif);
-            candidates.push(this.buildHeadlineCandidate(singleLine, fontSize, motif, imageAnalysis));
-        }
-
-        return candidates;
+      // If motif is on right, stagger leftward
+      if (motifCenter > canvasCenter) {
+        direction = -1;
+      }
     }
 
-    /**
-     * Tokenize text into words, preserving semantic units
-     */
-    tokenize(text) {
-        if (!text) return [];
+    // Calculate progressive offsets
+    const offsets = [];
+    lines.forEach((line, i) => {
+      // Progressive offset: each line shifts more
+      const progress = i / Math.max(1, lines.length - 1);
+      const offset = direction * progress * maxOffset * 0.6;
+      offsets.push(offset);
+    });
 
-        // Split by spaces but preserve multi-word concepts
-        return text.trim().split(/\s+/).filter(w => w.length > 0);
+    return offsets;
+  }
+
+  /**
+   * Apply offsets to lines
+   */
+  applyOffsets(lines, offsets) {
+    return lines.map((line, i) => ({
+      ...line,
+      offsetX: offsets[i] || 0
+    }));
+  }
+
+  /**
+   * Calculate optical width of text
+   */
+  calculateOpticalWidth(text, fontSize) {
+    let width = 0;
+    const scale = fontSize / 16; // Base at 16px
+
+    for (const char of text) {
+      const weight = this.characterWeights[char] || this.characterWeights['default'];
+      width += weight * scale;
     }
 
-    /**
-     * Generate semantic groupings of words into lines
-     */
-    generateSemanticGroupings(words) {
-        const groupings = [];
-        const n = words.length;
+    return width;
+  }
 
-        if (n === 0) return groupings;
-        if (n === 1) return [[words[0]]];
+  /**
+   * Build character weight map for optical width
+   */
+  buildCharacterWeights() {
+    const weights = {
+      'default': 9,
+      ' ': 4,
+      'i': 4, 'l': 4, 'j': 4, 't': 5, 'f': 5,
+      'r': 6, 's': 6, 'z': 6,
+      'a': 8, 'b': 8, 'c': 8, 'd': 8, 'e': 8, 'g': 8, 'h': 8, 'k': 8, 'n': 8, 'o': 8, 'p': 8, 'q': 8, 'u': 8, 'v': 8, 'x': 8, 'y': 8,
+      'm': 12, 'w': 12,
+      'A': 10, 'B': 10, 'C': 10, 'D': 10, 'E': 10, 'F': 9, 'G': 11, 'H': 11, 'I': 4, 'J': 8, 'K': 10, 'L': 9, 'M': 13, 'N': 11,
+      'O': 11, 'P': 9, 'Q': 11, 'R': 10, 'S': 9, 'T': 10, 'U': 11, 'V': 10, 'W': 14, 'X': 10, 'Y': 10, 'Z': 9,
+      '0': 9, '1': 6, '2': 9, '3': 9, '4': 9, '5': 9, '6': 9, '7': 9, '8': 9, '9': 9,
+      '.': 4, ',': 4, ';': 4, ':': 4, '!': 5, '?': 8, '-': 6, '–': 8, '—': 12,
+      '"': 6, "'": 3, '(': 6, ')': 6
+    };
 
-        // Single line
-        groupings.push([words.join(' ')]);
+    // Fill in lowercase from uppercase equivalents
+    'abcdefghijklmnopqrstuvwxyz'.split('').forEach(char => {
+      if (!weights[char]) {
+        weights[char] = weights[char.toUpperCase()] ? weights[char.toUpperCase()] * 0.85 : weights['default'];
+      }
+    });
 
-        // Two lines - try different splits
-        if (n >= 2) {
-            for (let i = 1; i < n; i++) {
-                const line1 = words.slice(0, i).join(' ');
-                const line2 = words.slice(i).join(' ');
+    return weights;
+  }
 
-                // Avoid orphan words
-                if (words.slice(i).length === 1 && words[i].length < 4) continue;
+  /**
+   * Get character weight
+   */
+  getCharacterWeight(char) {
+    return this.characterWeights[char] || this.characterWeights['default'];
+  }
 
-                groupings.push([line1, line2]);
-            }
-        }
+  /**
+   * Get token weight for grouping decisions
+   */
+  getTokenWeight(token) {
+    return token.length * 0.5 + (token.isCapitalized ? 1 : 0) + (token.isAllCaps ? 2 : 0);
+  }
 
-        // Three lines
-        if (n >= 3) {
-            for (let i = 1; i < n - 1; i++) {
-                for (let j = i + 1; j < n; j++) {
-                    const line1 = words.slice(0, i).join(' ');
-                    const line2 = words.slice(i, j).join(' ');
-                    const line3 = words.slice(j).join(' ');
+  /**
+   * Get group weight
+   */
+  getGroupWeight(group) {
+    return group.reduce((sum, t) => sum + this.getTokenWeight(t), 0);
+  }
 
-                    // Avoid weak endings
-                    if (words[j] && words[j].length < 3 && j === n - 1) continue;
+  /**
+   * Get headline max width based on motif position
+   */
+  getHeadlineMaxWidth(motif) {
+    const grid = this.gridSystem;
+    const usableWidth = grid.usableWidth;
 
-                    groupings.push([line1, line2, line3]);
-                }
-            }
-        }
-
-        // Filter out groupings with too many lines
-        return groupings.filter(g => g.length <= 4);
+    if (!motif) {
+      return usableWidth * 0.6;
     }
 
-    /**
-     * Calculate optimal headline font size
-     */
-    calculateHeadlineFontSize(lines, motif) {
-        const canvasWidth = this.grid.canvasWidth;
-        const canvasHeight = this.grid.canvasHeight;
+    // If motif is on right, headline goes on left
+    const motifCenter = motif.x + motif.width / 2;
+    const canvasCenter = grid.canvasWidth / 2;
 
-        // Base size on canvas width
-        let baseSize = canvasWidth / 12;
+    if (motifCenter > canvasCenter) {
+      // Motif on right, headline on left
+      return motif.x - grid.margin - grid.cellWidth;
+    } else {
+      // Motif on left, headline on right
+      return grid.canvasWidth - grid.margin - (motif.x + motif.width) - grid.cellWidth;
+    }
+  }
 
-        // Adjust for number of lines
-        baseSize = baseSize / Math.sqrt(lines.length);
+  /**
+   * Get subheading max width
+   */
+  getSubheadingMaxWidth(motif, headline) {
+    const grid = this.gridSystem;
+    return this.getHeadlineMaxWidth(motif) * 0.9;
+  }
 
-        // Adjust for canvas ratio
-        const ratio = canvasWidth / canvasHeight;
-        if (ratio > 1.5) baseSize *= 1.1; // Landscape gets slightly larger
-        if (ratio < 0.9) baseSize *= 0.9; // Portrait gets slightly smaller
+  /**
+   * Calculate optimal font size based on line count
+   */
+  calculateOptimalFontSize(lineCount, grid) {
+    const baseSize = this.fonts.headline.baseSize;
+    const maxHeight = grid.usableHeight * 0.4; // Max 40% of usable height
+    const totalLineHeight = lineCount * baseSize * this.fonts.headline.lineHeight;
 
-        // Constrain
-        return Math.max(18, Math.min(72, baseSize));
+    if (totalLineHeight > maxHeight) {
+      return Math.max(18, Math.floor(baseSize * (maxHeight / totalLineHeight)));
     }
 
-    /**
-     * Build a headline candidate with positioning and offsets
-     */
-    buildHeadlineCandidate(lines, fontSize, motif, imageAnalysis) {
-        const lineHeight = fontSize * 1.1;
-        const lineSpacing = fontSize * 0.25;
+    return baseSize;
+  }
 
-        // Calculate line widths using optical weights
-        const lineWidths = lines.map(line => this.calculateOpticalWidth(line, fontSize));
-        const maxWidth = Math.max(...lineWidths);
+  /**
+   * Validate composition
+   */
+  validateComposition(comp, motif) {
+    const issues = [];
+    const grid = this.gridSystem;
 
-        // Determine base position based on motif
-        const position = this.calculateHeadlinePosition(motif, maxWidth, lines.length * lineHeight);
-
-        // Calculate offsets for each line
-        const offsets = this.calculateLineOffsets(lines, lineWidths, motif, imageAnalysis);
-
-        // Build line objects
-        const lineObjects = lines.map((line, i) => ({
-            text: line,
-            fontSize: fontSize,
-            lineHeight: lineHeight,
-            width: lineWidths[i],
-            x: position.x + (offsets[i] || 0),
-            y: position.y + (i * (lineHeight + lineSpacing)),
-            offset: offsets[i] || 0
-        }));
-
-        return {
-            lines: lineObjects,
-            fontSize: fontSize,
-            lineHeight: lineHeight,
-            lineSpacing: lineSpacing,
-            totalWidth: maxWidth,
-            totalHeight: (lines.length * lineHeight) + ((lines.length - 1) * lineSpacing),
-            position: position,
-            offsets: offsets
-        };
+    // Check headline doesn't exceed max height
+    if (comp.headline.totalHeight > grid.usableHeight * 0.5) {
+      issues.push('Headline exceeds maximum height');
     }
 
-    /**
-     * Calculate optical width of a line
-     */
-    calculateOpticalWidth(text, fontSize) {
-        let totalWeight = 0;
-        for (const char of text) {
-            totalWeight += this.characterWeights[char] || 1.0;
-        }
-        // Convert to approximate pixel width
-        return (totalWeight / text.length) * text.length * fontSize * 0.55;
+    // Check line count
+    if (comp.headline.lines.length > 6) {
+      issues.push('Headline exceeds 6 lines');
     }
 
-    /**
-     * Calculate headline position based on motif location
-     */
-    calculateHeadlinePosition(motif, textWidth, textHeight) {
-        const margin = this.grid.margin;
-        const cellW = this.grid.cellWidth;
-        const cellH = this.grid.cellHeight;
-
-        let x, y;
-
-        if (!motif) {
-            // No motif, place in upper-left
-            x = margin + cellW;
-            y = margin + cellH * 2;
-        } else {
-            const motifCenterX = motif.x + motif.width / 2;
-            const motifRight = motif.x + motif.width;
-            const canvasCenterX = this.grid.canvasWidth / 2;
-
-            // Position headline on the side opposite to motif
-            if (motifCenterX > canvasCenterX) {
-                // Motif is on right, place text on left
-                x = margin + cellW;
-            } else {
-                // Motif is on left, place text on right
-                x = motifRight + cellW * 2;
-                // Ensure it doesn't go off canvas
-                if (x + textWidth > this.grid.canvasWidth - margin) {
-                    x = this.grid.canvasWidth - margin - textWidth - cellW;
-                }
-            }
-
-            // Vertical position: upper portion, aligned to grid
-            y = margin + cellH * 2;
-        }
-
-        // Snap to baseline
-        y = Math.round(y / this.baselineUnit) * this.baselineUnit;
-
-        return { x, y };
+    // Check offset limits
+    const maxOffset = Math.max(...comp.headline.lines.map(l => Math.abs(l.offsetX || 0)));
+    if (maxOffset > grid.cellWidth * 3) {
+      issues.push('Line offsets exceed 3 grid units');
     }
 
-    /**
-     * Calculate editorial offsets for each line
-     */
-    calculateLineOffsets(lines, lineWidths, motif, imageAnalysis) {
-        const offsets = [];
-        const cellW = this.grid.cellWidth;
-        const maxOffset = cellW * 3; // Max 3 grid modules
+    return {
+      valid: issues.length === 0,
+      issues
+    };
+  }
 
-        if (!motif) {
-            // No motif, minimal offset for editorial feel
-            offsets.push(0);
-            for (let i = 1; i < lines.length; i++) {
-                offsets.push(cellW * (0.3 + (i * 0.2)));
-            }
-            return offsets;
-        }
+  /**
+   * Score composition
+   */
+  scoreComposition(comp, motif, imageAnalysis) {
+    let score = 0;
 
-        const motifCenterX = motif.x + motif.width / 2;
-        const canvasCenterX = this.grid.canvasWidth / 2;
+    // Balance score (lines of different lengths)
+    const lineWidths = comp.headline.lines.map(l => l.width);
+    const widthVariance = this.calculateVariance(lineWidths);
+    score += Math.min(20, widthVariance * 2);
 
-        if (motifCenterX > canvasCenterX) {
-            // Motif on right: text on left, offset progressively inward
-            lines.forEach((line, i) => {
-                const progress = i / Math.max(1, lines.length - 1);
-                offsets.push(progress * maxOffset * 0.5);
-            });
-        } else if (motifCenterX < canvasCenterX) {
-            // Motif on left: text on right, offset progressively inward
-            lines.forEach((line, i) => {
-                const progress = i / Math.max(1, lines.length - 1);
-                offsets.push(-progress * maxOffset * 0.5);
-            });
-        } else {
-            // Motif centered: balance toward strongest negative space
-            const direction = imageAnalysis?.negativeSpace?.preferredZones?.[0]?.x > canvasCenterX ? 1 : -1;
-            lines.forEach((line, i) => {
-                const progress = i / Math.max(1, lines.length - 1);
-                offsets.push(direction * progress * maxOffset * 0.3);
-            });
-        }
+    // Offset score (editorial stagger)
+    const offsets = comp.headline.lines.map(l => l.offsetX || 0);
+    const hasStagger = offsets.some(o => o !== 0);
+    score += hasStagger ? 20 : 5;
 
-        return offsets;
+    // Readability score (font size)
+    const fontSize = comp.headline.fontSize;
+    if (fontSize >= 24) score += 20;
+    else if (fontSize >= 18) score += 15;
+    else score += 10;
+
+    // Fit score (within bounds)
+    const grid = this.gridSystem;
+    if (comp.headline.maxWidth < grid.usableWidth * 0.7) score += 20;
+    else score += 10;
+
+    // Hierarchy score (subheading smaller than headline)
+    if (comp.subheading && comp.subheading.fontSize < comp.headline.fontSize * 0.6) {
+      score += 20;
     }
 
-    /**
-     * Compose subheading
-     */
-    composeSubheading(text, headline, motif) {
-        if (!text) return null;
-
-        const words = this.tokenize(text);
-        if (words.length === 0) return null;
-
-        // Subheading font size: 0.4x to 0.5x of headline
-        const fontSize = Math.max(12, headline.fontSize * 0.42);
-        const lineHeight = fontSize * 1.3;
-
-        // Determine width based on available space
-        const maxWidth = this.calculateSubheadingWidth(headline, motif);
-
-        // Group words into lines that fit
-        const lines = this.wrapSubheading(words, maxWidth, fontSize);
-
-        // Position: below headline, aligned to headline edge
-        const x = headline.position.x;
-        const y = headline.position.y + headline.totalHeight + this.baselineUnit * 2;
-
-        // Snap to baseline
-        const snappedY = Math.round(y / this.baselineUnit) * this.baselineUnit;
-
-        // Build line objects
-        const lineObjects = lines.map((line, i) => ({
-            text: line,
-            fontSize: fontSize,
-            lineHeight: lineHeight,
-            x: x,
-            y: snappedY + (i * lineHeight),
-            width: this.calculateOpticalWidth(line, fontSize)
-        }));
-
-        return {
-            lines: lineObjects,
-            fontSize: fontSize,
-            lineHeight: lineHeight,
-            totalHeight: lines.length * lineHeight,
-            position: { x, y: snappedY }
-        };
-    }
-
-    /**
-     * Calculate subheading max width
-     */
-    calculateSubheadingWidth(headline, motif) {
-        const canvasWidth = this.grid.canvasWidth;
-        const margin = this.grid.margin;
-        const cellW = this.grid.cellWidth;
-
-        let maxWidth = canvasWidth - headline.position.x - margin - cellW;
-
-        if (motif) {
-            // Ensure subheading doesn't overlap motif
-            const motifLeft = motif.x;
-            const motifRight = motif.x + motif.width;
-            const headlineRight = headline.position.x + headline.totalWidth;
-
-            if (headlineRight > motifLeft && headline.position.x < motifRight) {
-                // Headline overlaps motif horizontally, constrain width
-                maxWidth = Math.min(maxWidth, motifLeft - headline.position.x - cellW);
-            }
-        }
-
-        return Math.max(100, maxWidth);
-    }
-
-    /**
-     * Wrap subheading words into lines
-     */
-    wrapSubheading(words, maxWidth, fontSize) {
-        const lines = [];
-        let currentLine = [];
-        let currentWidth = 0;
-
-        for (const word of words) {
-            const wordWidth = this.calculateOpticalWidth(word, fontSize);
-            const spaceWidth = this.calculateOpticalWidth(' ', fontSize);
-
-            if (currentWidth + wordWidth + (currentLine.length > 0 ? spaceWidth : 0) > maxWidth) {
-                if (currentLine.length > 0) {
-                    lines.push(currentLine.join(' '));
-                    currentLine = [word];
-                    currentWidth = wordWidth;
-                } else {
-                    // Word is too long, force break
-                    lines.push(word);
-                }
-            } else {
-                currentLine.push(word);
-                currentWidth += wordWidth + (currentLine.length > 1 ? spaceWidth : 0);
-            }
-        }
-
-        if (currentLine.length > 0) {
-            lines.push(currentLine.join(' '));
-        }
-
-        return lines;
-    }
-
-    /**
-     * Compose metadata/tagline
-     */
-    composeMetadata(headline, subheading, motif) {
-        const tagline = "Make the Difference.";
-        const fontSize = Math.max(9, Math.min(12, this.grid.canvasWidth / 80));
-        const lineHeight = fontSize * 1.4;
-
-        // Position: bottom-right, aligned to grid
-        const margin = this.grid.margin;
-        const cellW = this.grid.cellWidth;
-        const cellH = this.grid.cellHeight;
-
-        const x = this.grid.canvasWidth - margin - cellW * 4;
-        const y = this.grid.canvasHeight - margin - cellH * 0.5;
-
-        // Snap to baseline
-        const snappedY = Math.round(y / this.baselineUnit) * this.baselineUnit;
-
-        return {
-            text: tagline,
-            fontSize: fontSize,
-            lineHeight: lineHeight,
-            x: x,
-            y: snappedY,
-            width: this.calculateOpticalWidth(tagline, fontSize),
-            align: 'right'
-        };
-    }
-
-    /**
-     * Validate composition against all rules
-     */
-    validateComposition(comp, motif) {
-        const issues = [];
-
-        // 1. Headline height <= 6 grid modules
-        const maxHeadlineHeight = this.grid.cellHeight * 6;
-        if (comp.headline.totalHeight > maxHeadlineHeight) {
-            issues.push({ rule: 'headline-height', message: 'Headline exceeds 6 grid modules' });
-            comp.valid = false;
-        }
-
-        // 2. Subheading height <= 0.5 grid module
-        if (comp.subheading && comp.subheading.totalHeight > this.grid.cellHeight * 0.5) {
-            issues.push({ rule: 'subheading-height', message: 'Subheading exceeds 0.5 grid module' });
-            comp.valid = false;
-        }
-
-        // 3. No orphan words
-        const lastHeadlineLine = comp.headline.lines[comp.headline.lines.length - 1];
-        if (lastHeadlineLine && lastHeadlineLine.text.split(' ').length === 1 && 
-            lastHeadlineLine.text.length < 4 && comp.headline.lines.length > 1) {
-            issues.push({ rule: 'orphan-word', message: 'Orphan word in headline' });
-            comp.valid = false;
-        }
-
-        // 4. Subheading doesn't dominate headline
-        if (comp.subheading && comp.subheading.fontSize > comp.headline.fontSize * 0.6) {
-            issues.push({ rule: 'hierarchy', message: 'Subheading too large' });
-            comp.valid = false;
-        }
-
-        // 5. Minimum distance from motif
-        if (motif) {
-            const minDist = this.grid.cellWidth;
-
-            comp.headline.lines.forEach(line => {
-                if (this.distanceToMotif(line, motif) < minDist) {
-                    issues.push({ rule: 'motif-distance', message: 'Headline too close to motif' });
-                    comp.valid = false;
-                }
-            });
-        }
-
-        // 6. Typography doesn't exit canvas
-        comp.headline.lines.forEach(line => {
-            if (line.x < this.grid.margin || 
-                line.x + line.width > this.grid.canvasWidth - this.grid.margin ||
-                line.y < this.grid.margin ||
-                line.y + line.fontSize > this.grid.canvasHeight - this.grid.margin) {
-                issues.push({ rule: 'canvas-boundary', message: 'Typography exits canvas' });
-                comp.valid = false;
-            }
-        });
-
-        // 7. No split words
-        comp.headline.lines.forEach(line => {
-            const words = line.text.split(' ');
-            words.forEach(word => {
-                if (word.length < 2 && words.length > 1) {
-                    issues.push({ rule: 'split-word', message: 'Word unnaturally split' });
-                    comp.valid = false;
-                }
-            });
-        });
-
-        comp.issues = issues;
-    }
-
-    /**
-     * Score a composition
-     */
-    scoreComposition(comp, motif, imageAnalysis) {
-        let score = 0;
-
-        // Readability (25%)
-        const readabilityScore = this.scoreReadability(comp);
-        score += readabilityScore * this.scoringWeights.readability;
-
-        // Hierarchy Strength (20%)
-        const hierarchyScore = this.scoreHierarchy(comp);
-        score += hierarchyScore * this.scoringWeights.hierarchyStrength;
-
-        // Optical Balance (20%)
-        const balanceScore = this.scoreOpticalBalance(comp);
-        score += balanceScore * this.scoringWeights.opticalBalance;
-
-        // Grid Harmony (15%)
-        const gridScore = this.scoreGridHarmony(comp);
-        score += gridScore * this.scoringWeights.gridHarmony;
-
-        // Motif Compatibility (10%)
-        const motifScore = this.scoreMotifCompatibility(comp, motif);
-        score += motifScore * this.scoringWeights.motifCompatibility;
-
-        // Negative Space Preservation (5%)
-        const spaceScore = this.scoreNegativeSpace(comp, imageAnalysis);
-        score += spaceScore * this.scoringWeights.negativeSpacePreservation;
-
-        // Brand Compliance (5%)
-        const brandScore = this.scoreBrandCompliance(comp);
-        score += brandScore * this.scoringWeights.brandCompliance;
-
-        return score;
-    }
-
-    scoreReadability(comp) {
-        let score = 1.0;
-
-        // Penalize if font too small
-        if (comp.headline.fontSize < 16) score -= 0.3;
-        if (comp.subheading && comp.subheading.fontSize < 10) score -= 0.2;
-
-        // Penalize too many lines
-        if (comp.headline.lines.length > 3) score -= 0.2;
-
-        // Penalize if lines too long
-        const maxLineWidth = this.grid.canvasWidth * 0.7;
-        comp.headline.lines.forEach(line => {
-            if (line.width > maxLineWidth) score -= 0.1;
-        });
-
-        return Math.max(0, score);
-    }
-
-    scoreHierarchy(comp) {
-        if (!comp.subheading) return 0.8;
-
-        const ratio = comp.subheading.fontSize / comp.headline.fontSize;
-
-        // Ideal: subheading is 35-45% of headline
-        if (ratio >= 0.35 && ratio <= 0.45) return 1.0;
-        if (ratio >= 0.30 && ratio <= 0.50) return 0.8;
-        if (ratio > 0.50) return 0.3; // Too dominant
-        return 0.6;
-    }
-
-    scoreOpticalBalance(comp) {
-        const lineWidths = comp.headline.lines.map(l => l.width);
-        const avgWidth = lineWidths.reduce((a, b) => a + b, 0) / lineWidths.length;
-
-        // Calculate variance
-        const variance = lineWidths.reduce((sum, w) => sum + Math.pow(w - avgWidth, 2), 0) / lineWidths.length;
-        const stdDev = Math.sqrt(variance);
-
-        // Lower variance = better balance, but some variation is editorial
-        const cv = stdDev / avgWidth; // Coefficient of variation
-
-        if (cv < 0.1) return 0.6; // Too uniform
-        if (cv < 0.3) return 1.0; // Good editorial variation
-        if (cv < 0.5) return 0.8;
-        return 0.5;
-    }
-
-    scoreGridHarmony(comp) {
-        let score = 1.0;
-
-        // Check if positions align to grid
-        comp.headline.lines.forEach(line => {
-            const xAligned = Math.abs(line.x % this.grid.cellWidth) < 5;
-            const yAligned = Math.abs(line.y % this.baselineUnit) < 2;
-
-            if (!xAligned) score -= 0.05;
-            if (!yAligned) score -= 0.05;
-        });
-
-        return Math.max(0, score);
-    }
-
-    scoreMotifCompatibility(comp, motif) {
-        if (!motif) return 0.8;
-
-        let score = 1.0;
-        const minDist = this.grid.cellWidth;
-
-        comp.headline.lines.forEach(line => {
-            const dist = this.distanceToMotif(line, motif);
-            if (dist < minDist) score -= 0.3;
-            else if (dist < minDist * 2) score -= 0.1;
-        });
-
-        return Math.max(0, score);
-    }
-
-    scoreNegativeSpace(comp, imageAnalysis) {
-        if (!imageAnalysis || !imageAnalysis.negativeSpace) return 0.5;
-
-        // Check if typography sits in negative space
-        let overlapScore = 0;
-        const zones = imageAnalysis.negativeSpace.preferredZones || [];
-
-        comp.headline.lines.forEach(line => {
-            zones.forEach(zone => {
-                if (this.lineInZone(line, zone)) overlapScore += 0.1;
-            });
-        });
-
-        return Math.min(1, 0.5 + overlapScore);
-    }
-
-    scoreBrandCompliance(comp) {
-        let score = 1.0;
-
-        // Check hierarchy order is preserved
-        if (comp.subheading && comp.subheading.fontSize >= comp.headline.fontSize * 0.5) {
-            score -= 0.5;
-        }
-
-        // Metadata should be smallest
-        if (comp.metadata && comp.metadata.fontSize > (comp.subheading?.fontSize || 0) * 0.8) {
-            score -= 0.3;
-        }
-
-        return Math.max(0, score);
-    }
-
-    distanceToMotif(line, motif) {
-        const lineCenterX = line.x + line.width / 2;
-        const lineCenterY = line.y + line.fontSize / 2;
-        const motifCenterX = motif.x + motif.width / 2;
-        const motifCenterY = motif.y + motif.height / 2;
-
-        return Math.sqrt(
-            Math.pow(lineCenterX - motifCenterX, 2) +
-            Math.pow(lineCenterY - motifCenterY, 2)
-        );
-    }
-
-    lineInZone(line, zone) {
-        return !(line.x + line.width < zone.x || 
-                 line.x > zone.x + zone.width ||
-                 line.y + line.fontSize < zone.y || 
-                 line.y > zone.y + zone.height);
-    }
-
-    finalizeComposition(comp) {
-        return {
-            headline: comp.headline,
-            subheading: comp.subheading,
-            metadata: comp.metadata,
-            score: comp.score,
-            valid: comp.valid,
-            issues: comp.issues
-        };
-    }
+    return Math.min(100, score);
+  }
+
+  /**
+   * Calculate variance
+   */
+  calculateVariance(values) {
+    if (values.length === 0) return 0;
+    const mean = values.reduce((a, b) => a + b, 0) / values.length;
+    const squaredDiffs = values.map(v => (v - mean) ** 2);
+    return Math.sqrt(squaredDiffs.reduce((a, b) => a + b, 0) / values.length);
+  }
+
+  /**
+   * Regenerate composition (called when text changes)
+   */
+  regenerate(headlineText, subheadingText, motif, imageAnalysis) {
+    return this.compose(headlineText, subheadingText, motif, imageAnalysis);
+  }
 }
 
 // Make available globally

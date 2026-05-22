@@ -1,581 +1,620 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Intelligent Brand Composition Engine</title>
-    <link rel="stylesheet" href="app/styles/styles.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.16.3/dist/ort.min.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KPMG Brand Composition Engine</title>
+  <link rel="stylesheet" href="app/styles/styles.css">
+  <!-- Fabric.js for canvas rendering -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+  <!-- jsPDF for PDF export -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
-    <div id="app">
-        <!-- Header -->
-        <header class="app-header">
-            <div class="header-brand">
-                <div class="logo-icon">
-                    <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
-                        <rect x="2" y="2" width="24" height="24" rx="4" stroke="currentColor" stroke-width="2" fill="none"/>
-                        <circle cx="14" cy="14" r="5" stroke="currentColor" stroke-width="2" fill="none"/>
-                        <path d="M14 2V9M14 19V26M2 14H9M19 14H26" stroke="currentColor" stroke-width="2"/>
-                    </svg>
-                </div>
-                <div class="header-title">
-                    <h1>Brand Composition Engine</h1>
-                    <span class="header-subtitle">Intelligent Offline Design System</span>
-                </div>
-            </div>
-            <div class="header-actions">
-                <button id="btn-new-project" class="btn btn-secondary">New Project</button>
-                <button id="btn-export" class="btn btn-primary">Export Asset</button>
-            </div>
-        </header>
+  <div id="app">
+    <!-- Header: Step Navigation + Brand Score -->
+    <header class="app-header">
+      <div class="header-brand">
+        <svg class="kpmg-logo" width="80" height="28" viewBox="0 0 80 28" fill="none">
+          <rect x="0" y="4" width="16" height="20" fill="#00338D" rx="1"/>
+          <rect x="18" y="4" width="16" height="20" fill="#00338D" rx="1"/>
+          <rect x="36" y="4" width="16" height="20" fill="#00338D" rx="1"/>
+          <rect x="54" y="4" width="16" height="20" fill="#00338D" rx="1"/>
+          <text x="2" y="19" font-family="Arial, sans-serif" font-size="11" font-weight="bold" fill="white">K</text>
+          <text x="20" y="19" font-family="Arial, sans-serif" font-size="11" font-weight="bold" fill="white">P</text>
+          <text x="38" y="19" font-family="Arial, sans-serif" font-size="11" font-weight="bold" fill="white">M</text>
+          <text x="56" y="19" font-family="Arial, sans-serif" font-size="11" font-weight="bold" fill="white">G</text>
+        </svg>
+      </div>
 
-        <!-- Main Workspace -->
-        <div class="workspace">
-            <!-- Left Sidebar -->
-            <aside class="sidebar sidebar-left" id="left-sidebar">
-                <!-- Asset Type Section -->
-                <div class="panel">
-                    <div class="panel-header">
-                        <span class="panel-icon">◈</span>
-                        <h3>Asset Type</h3>
-                    </div>
-                    <div class="panel-content">
-                        <div class="category-tabs">
-                            <button class="tab-btn active" data-category="social">Social</button>
-                            <button class="tab-btn" data-category="web">Web</button>
-                            <button class="tab-btn" data-category="email">Email</button>
-                            <button class="tab-btn" data-category="print">Print</button>
-                            <button class="tab-btn" data-category="presentation">Presentation</button>
-                            <button class="tab-btn" data-category="custom">Custom</button>
-                        </div>
-                        <div class="preset-list" id="preset-list">
-                            <!-- Populated by JS -->
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Custom Size Panel -->
-                <div class="panel" id="custom-size-panel" style="display:none;">
-                    <div class="panel-header">
-                        <span class="panel-icon">□</span>
-                        <h3>Custom Dimensions</h3>
-                    </div>
-                    <div class="panel-content">
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>Width</label>
-                                <input type="number" id="custom-width" value="1080" min="1">
-                            </div>
-                            <div class="form-group">
-                                <label>Height</label>
-                                <input type="number" id="custom-height" value="1080" min="1">
-                            </div>
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>Unit</label>
-                                <select id="custom-unit">
-                                    <option value="px">px</option>
-                                    <option value="mm">mm</option>
-                                    <option value="in">inches</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label>DPI</label>
-                                <input type="number" id="custom-dpi" value="72" min="1">
-                            </div>
-                        </div>
-                        <div class="form-check">
-                            <input type="checkbox" id="lock-aspect" checked>
-                            <label for="lock-aspect">Lock aspect ratio</label>
-                        </div>
-                        <button id="btn-apply-custom" class="btn btn-primary btn-block">Apply Dimensions</button>
-                    </div>
-                </div>
-
-                <!-- Image Controls -->
-                <div class="panel">
-                    <div class="panel-header">
-                        <span class="panel-icon">🖼</span>
-                        <h3>Image Assets</h3>
-                    </div>
-                    <div class="panel-content">
-                        <div class="upload-zone" id="upload-image-zone">
-                            <div class="upload-icon">
-                                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                                    <polyline points="17 8 12 3 7 8"/>
-                                    <line x1="12" y1="3" x2="12" y2="15"/>
-                                </svg>
-                            </div>
-                            <p>Drop image here or click to upload</p>
-                            <span class="upload-hint">JPG, PNG, WebP up to 20MB</span>
-                            <input type="file" id="image-upload" accept="image/*" hidden>
-                        </div>
-                        <div class="upload-zone" id="upload-logo-zone">
-                            <div class="upload-icon">
-                                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-                                    <path d="M2 17l10 5 10-5"/>
-                                    <path d="M2 12l10 5 10-5"/>
-                                </svg>
-                            </div>
-                            <p>Upload brand logo</p>
-                            <span class="upload-hint">PNG with transparency preferred</span>
-                            <input type="file" id="logo-upload" accept="image/*" hidden>
-                        </div>
-                        <div class="demo-section" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border-primary);">
-                            <label style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;display:block;">Quick Demo</label>
-                            <div style="display:flex;gap:6px;flex-wrap:wrap;">
-                                <button id="demo-running" class="btn btn-sm" style="flex:1;min-width:80px;">🏃 Runner</button>
-                                <button id="demo-arch" class="btn btn-sm" style="flex:1;min-width:80px;">🏢 Building</button>
-                                <button id="demo-nature" class="btn btn-sm" style="flex:1;min-width:80px;">🌊 Ocean</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Typography Composition -->
-                <div class="panel">
-                    <div class="panel-header">
-                        <span class="panel-icon">T</span>
-                        <h3>Typography</h3>
-                    </div>
-                    <div class="panel-content">
-                        <div class="form-group">
-                            <label>Headline</label>
-                            <input type="text" id="headline-input" value="Building trust." placeholder="Enter headline">
-                            <span class="field-hint">Primary headline text</span>
-                        </div>
-                        <div class="form-group">
-                            <label>Subheading</label>
-                            <input type="text" id="subheading-input" value="Digital transformation for the future." placeholder="Enter subheading">
-                            <span class="field-hint">Supporting subheading text</span>
-                        </div>
-                        <div class="form-group">
-                            <label>Metadata / Tagline</label>
-                            <input type="text" id="brand-tagline" value="Make the Difference." placeholder="Brand tagline">
-                        </div>
-                        <button id="btn-compose-typography" class="btn btn-primary btn-block">Compose Typography</button>
-
-                        <div class="typography-preview" id="typography-preview" style="margin-top:12px;padding:10px;background:var(--bg-tertiary);border-radius:var(--radius-sm);display:none;">
-                            <div class="preview-headline" id="preview-headline" style="font-size:14px;font-weight:700;color:var(--text-primary);line-height:1.3;"></div>
-                            <div class="preview-subheading" id="preview-subheading" style="font-size:11px;color:var(--text-secondary);margin-top:4px;line-height:1.4;"></div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Grid Controls -->
-                <div class="panel">
-                    <div class="panel-header">
-                        <span class="panel-icon">⊞</span>
-                        <h3>Grid & Guides</h3>
-                    </div>
-                    <div class="panel-content">
-                        <div class="toggle-list">
-                            <label class="toggle-item">
-                                <input type="checkbox" id="show-grid" checked>
-                                <span class="toggle-slider"></span>
-                                <span class="toggle-label">Show grid</span>
-                            </label>
-                            <label class="toggle-item">
-                                <input type="checkbox" id="show-margins" checked>
-                                <span class="toggle-slider"></span>
-                                <span class="toggle-label">Safe margins</span>
-                            </label>
-                            <label class="toggle-item">
-                                <input type="checkbox" id="snap-grid">
-                                <span class="toggle-slider"></span>
-                                <span class="toggle-label">Snap to grid</span>
-                            </label>
-                            <label class="toggle-item">
-                                <input type="checkbox" id="show-heatmap">
-                                <span class="toggle-slider"></span>
-                                <span class="toggle-label">Focal heatmap</span>
-                            </label>
-                            <label class="toggle-item">
-                                <input type="checkbox" id="show-negative">
-                                <span class="toggle-slider"></span>
-                                <span class="toggle-label">Negative space</span>
-                            </label>
-                            <label class="toggle-item">
-                                <input type="checkbox" id="show-zones">
-                                <span class="toggle-slider"></span>
-                                <span class="toggle-label">Composition zones</span>
-                            </label>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Export Controls -->
-                <div class="panel">
-                    <div class="panel-header">
-                        <span class="panel-icon">⬇</span>
-                        <h3>Export</h3>
-                    </div>
-                    <div class="panel-content">
-                        <div class="export-options">
-                            <div class="form-group">
-                                <label>Format</label>
-                                <select id="export-format">
-                                    <option value="png">PNG</option>
-                                    <option value="jpg">JPG</option>
-                                    <option value="pdf">PDF</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label>DPI</label>
-                                <select id="export-dpi">
-                                    <option value="72">72 DPI (Web)</option>
-                                    <option value="150">150 DPI (Print Low)</option>
-                                    <option value="300" selected>300 DPI (Print High)</option>
-                                    <option value="600">600 DPI (Premium)</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label>Color Mode</label>
-                                <select id="export-color">
-                                    <option value="rgb">RGB</option>
-                                    <option value="cmyk">CMYK (simulated)</option>
-                                </select>
-                            </div>
-                            <div class="form-check">
-                                <input type="checkbox" id="export-transparent">
-                                <label for="export-transparent">Transparent background</label>
-                            </div>
-                            <div class="form-group">
-                                <label>Quality</label>
-                                <input type="range" id="export-quality" min="0.1" max="1" step="0.1" value="0.95">
-                                <span class="range-value">95%</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </aside>
-
-            <!-- Center Canvas Area -->
-            <main class="canvas-area">
-                <div class="canvas-toolbar">
-                    <div class="toolbar-group">
-                        <button id="tool-zoom-in" class="tool-btn" title="Zoom In">+</button>
-                        <span id="zoom-level">100%</span>
-                        <button id="tool-zoom-out" class="tool-btn" title="Zoom Out">−</button>
-                        <button id="tool-fit" class="tool-btn" title="Fit to Screen">⌘</button>
-                    </div>
-                    <div class="toolbar-group">
-                        <button id="tool-pan" class="tool-btn active" title="Pan">✋</button>
-                        <button id="tool-select" class="tool-btn" title="Select">↖</button>
-                    </div>
-                    <div class="toolbar-group">
-                        <button id="tool-lock" class="tool-btn" title="Lock Selection">🔒</button>
-                        <button id="tool-unlock" class="tool-btn" title="Unlock All">🔓</button>
-                    </div>
-                    <div class="toolbar-group">
-                        <button id="tool-align-left" class="tool-btn" title="Align Left">⬅</button>
-                        <button id="tool-align-center" class="tool-btn" title="Align Center">↔</button>
-                        <button id="tool-align-right" class="tool-btn" title="Align Right">➡</button>
-                    </div>
-                </div>
-                <div class="canvas-wrapper" id="canvas-wrapper">
-                    <canvas id="main-canvas"></canvas>
-                    <div class="canvas-overlay" id="canvas-overlay"></div>
-                </div>
-                <div class="canvas-status">
-                    <span id="canvas-dims">1080 × 1080 px</span>
-                    <span id="canvas-mode">Social — Instagram Square</span>
-                    <span id="ai-status" class="ai-status idle">AI Ready</span>
-                </div>
-            </main>
-
-            <!-- Right Sidebar -->
-            <aside class="sidebar sidebar-right" id="right-sidebar">
-                <!-- AI Analysis Panel -->
-                <div class="panel panel-ai">
-                    <div class="panel-header">
-                        <span class="panel-icon ai-pulse">◉</span>
-                        <h3>AI Analysis</h3>
-                        <button id="btn-run-ai" class="btn btn-ai btn-sm">Analyze</button>
-                    </div>
-                    <div class="panel-content">
-                        <div class="ai-progress" id="ai-progress" style="display:none;">
-                            <div class="progress-bar">
-                                <div class="progress-fill" id="progress-fill"></div>
-                            </div>
-                            <span class="progress-text" id="progress-text">Initializing...</span>
-                        </div>
-
-                        <div class="ai-results" id="ai-results">
-                            <div class="ai-section">
-                                <h4>Scene Classification</h4>
-                                <div class="ai-metric">
-                                    <span class="metric-label">Category</span>
-                                    <span class="metric-value" id="ai-category">—</span>
-                                </div>
-                                <div class="ai-metric">
-                                    <span class="metric-label">Confidence</span>
-                                    <span class="metric-value" id="ai-confidence">—</span>
-                                </div>
-                            </div>
-
-                            <div class="ai-section">
-                                <h4>Composition Scores</h4>
-                                <div class="score-item">
-                                    <span class="score-label">Focal Clarity</span>
-                                    <div class="score-bar">
-                                        <div class="score-fill" id="score-focal" style="width:0%"></div>
-                                    </div>
-                                    <span class="score-value" id="score-focal-val">—</span>
-                                </div>
-                                <div class="score-item">
-                                    <span class="score-label">Motion Energy</span>
-                                    <div class="score-bar">
-                                        <div class="score-fill" id="score-motion" style="width:0%"></div>
-                                    </div>
-                                    <span class="score-value" id="score-motion-val">—</span>
-                                </div>
-                                <div class="score-item">
-                                    <span class="score-label">Negative Space</span>
-                                    <div class="score-bar">
-                                        <div class="score-fill" id="score-negative" style="width:0%"></div>
-                                    </div>
-                                    <span class="score-value" id="score-negative-val">—</span>
-                                </div>
-                                <div class="score-item">
-                                    <span class="score-label">Composition Quality</span>
-                                    <div class="score-bar">
-                                        <div class="score-fill" id="score-composition" style="width:0%"></div>
-                                    </div>
-                                    <span class="score-value" id="score-composition-val">—</span>
-                                </div>
-                                <div class="score-item">
-                                    <span class="score-label">Brand Compatibility</span>
-                                    <div class="score-bar">
-                                        <div class="score-fill" id="score-brand" style="width:0%"></div>
-                                    </div>
-                                    <span class="score-value" id="score-brand-val">—</span>
-                                </div>
-                            </div>
-
-                            <div class="ai-section">
-                                <h4>Orchestration Stages</h4>
-                                <div class="score-item">
-                                    <span class="score-label">Grid Generation</span>
-                                    <div class="score-bar"><div class="score-fill" id="stage-grid" style="width:0%;background:#4ade80;"></div></div>
-                                </div>
-                                <div class="score-item">
-                                    <span class="score-label">Image Analysis</span>
-                                    <div class="score-bar"><div class="score-fill" id="stage-analysis" style="width:0%;background:#4ade80;"></div></div>
-                                </div>
-                                <div class="score-item">
-                                    <span class="score-label">Motif Placement</span>
-                                    <div class="score-bar"><div class="score-fill" id="stage-motif" style="width:0%;background:#4ade80;"></div></div>
-                                </div>
-                                <div class="score-item">
-                                    <span class="score-label">Color Treatment</span>
-                                    <div class="score-bar"><div class="score-fill" id="stage-treatment" style="width:0%;background:#4ade80;"></div></div>
-                                </div>
-                                <div class="score-item">
-                                    <span class="score-label">Typography</span>
-                                    <div class="score-bar"><div class="score-fill" id="stage-typography" style="width:0%;background:#4ade80;"></div></div>
-                                </div>
-                                <div class="score-item">
-                                    <span class="score-label">Validation</span>
-                                    <div class="score-bar"><div class="score-fill" id="stage-validation" style="width:0%;background:#4ade80;"></div></div>
-                                </div>
-                            </div>
-                            <div class="ai-section">
-                                <h4>Detected Elements</h4>
-                                <div class="detection-tags" id="detection-tags">
-                                    <span class="tag">No image analyzed</span>
-                                </div>
-                            </div>
-
-                            <div class="ai-section">
-                                <h4>Subject Direction</h4>
-                                <div class="direction-indicator" id="direction-indicator">
-                                    <div class="direction-arrow" id="direction-arrow">↑</div>
-                                    <span id="direction-text">No direction detected</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Validation Panel -->
-                <div class="panel">
-                    <div class="panel-header">
-                        <span class="panel-icon">⚠</span>
-                        <h3>Validation</h3>
-                    </div>
-                    <div class="panel-content">
-                        <div class="validation-status" id="validation-status">
-                            <div class="status-badge pending">Pending Analysis</div>
-                        </div>
-                        <div class="warnings-list" id="warnings-list">
-                            <div class="warning-item info">
-                                <span class="warning-icon">ℹ</span>
-                                <span>Upload and analyze an image to see validation results</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Layers Panel -->
-                <div class="panel">
-                    <div class="panel-header">
-                        <span class="panel-icon">☰</span>
-                        <h3>Layers</h3>
-                    </div>
-                    <div class="panel-content">
-                        <div class="layers-list" id="layers-list">
-                            <div class="layer-item" data-layer="background">
-                                <span class="layer-visibility">👁</span>
-                                <span class="layer-name">Background Image</span>
-                                <span class="layer-lock">🔓</span>
-                            </div>
-                            <div class="layer-item" data-layer="logo">
-                                <span class="layer-visibility">👁</span>
-                                <span class="layer-name">Brand Logo</span>
-                                <span class="layer-lock">🔓</span>
-                            </div>
-                            <div class="layer-item" data-layer="tagline">
-                                <span class="layer-visibility">👁</span>
-                                <span class="layer-name">Tagline</span>
-                                <span class="layer-lock">🔓</span>
-                            </div>
-                            <div class="layer-item" data-layer="metadata">
-                                <span class="layer-visibility">👁</span>
-                                <span class="layer-name">Metadata</span>
-                                <span class="layer-lock">🔓</span>
-                            </div>
-                            <div class="layer-item" data-layer="grid">
-                                <span class="layer-visibility">👁</span>
-                                <span class="layer-name">Grid Overlay</span>
-                                <span class="layer-lock">🔒</span>
-                            </div>
-                            <div class="layer-item" data-layer="ai-overlay">
-                                <span class="layer-visibility">👁</span>
-                                <span class="layer-name">AI Overlays</span>
-                                <span class="layer-lock">🔒</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Composition Info -->
-                <div class="panel">
-                    <div class="panel-header">
-                        <span class="panel-icon">⊕</span>
-                        <h3>Composition Info</h3>
-                    </div>
-                    <div class="panel-content">
-                        <div class="info-grid">
-                            <div class="info-item">
-                                <span class="info-label">Grid Type</span>
-                                <span class="info-value" id="info-grid-type">12 × 12</span>
-                            </div>
-                            <div class="info-item">
-                                <span class="info-label">Cell Size</span>
-                                <span class="info-value" id="info-cell-size">90 × 90 px</span>
-                            </div>
-                            <div class="info-item">
-                                <span class="info-label">Safe Margin</span>
-                                <span class="info-value" id="info-margin">54 px</span>
-                            </div>
-                            <div class="info-item">
-                                <span class="info-label">Focal Point</span>
-                                <span class="info-value" id="info-focal">—</span>
-                            </div>
-                            <div class="info-item">
-                                <span class="info-label">Logo Position</span>
-                                <span class="info-value" id="info-logo-pos">—</span>
-                                                        </div>
-                            <div class="info-item">
-                                <span class="info-label">Motif</span>
-                                <span class="info-value" id="info-motif">—</span>
-                            </div>
-                            <div class="info-item">
-                                <span class="info-label">Treatment</span>
-                                <span class="info-value" id="info-treatment">—</span>
-                            </div>
-                            <div class="info-item">
-                                <span class="info-label">Tagline Position</span>
-                                <span class="info-value" id="info-tagline-pos">—</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </aside>
+      <!-- Step Navigation -->
+      <nav class="step-nav">
+        <div class="step-item active" data-step="explore">
+          <div class="step-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+              <path d="M2 17l10 5 10-5"/>
+              <path d="M2 12l10 5 10-5"/>
+            </svg>
+          </div>
+          <span class="step-label">Explore</span>
+          <div class="step-dot"></div>
         </div>
-    </div>
+        <div class="step-connector"></div>
+        <div class="step-item" data-step="compose">
+          <div class="step-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+            </svg>
+          </div>
+          <span class="step-label">Compose</span>
+          <div class="step-dot"></div>
+        </div>
+        <div class="step-connector"></div>
+        <div class="step-item" data-step="refine">
+          <div class="step-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="6" cy="6" r="3"/>
+              <circle cx="6" cy="18" r="3"/>
+              <line x1="20" y1="4" x2="8.12" y2="15.88"/>
+              <line x1="14.47" y1="14.48" x2="20" y2="20"/>
+              <line x1="8.12" y1="8.12" x2="12" y2="12"/>
+            </svg>
+          </div>
+          <span class="step-label">Refine</span>
+          <div class="step-dot"></div>
+        </div>
+        <div class="step-connector"></div>
+        <div class="step-item" data-step="export">
+          <div class="step-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+          </div>
+          <span class="step-label">Export</span>
+          <div class="step-dot"></div>
+        </div>
+      </nav>
+
+      <!-- Brand Score -->
+      <div class="brand-score">
+        <span class="brand-score-label">Brand Score</span>
+        <div class="brand-score-ring" id="brand-score-ring">
+          <svg viewBox="0 0 44 44" width="44" height="44">
+            <circle cx="22" cy="22" r="18" fill="none" stroke="#E8ECF4" stroke-width="3"/>
+            <circle cx="22" cy="22" r="18" fill="none" stroke="#00338D" stroke-width="3"
+              stroke-dasharray="113" stroke-dashoffset="113" stroke-linecap="round"
+              id="brand-score-circle" transform="rotate(-90 22 22)"/>
+          </svg>
+          <span class="brand-score-value" id="brand-score-value">0</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+      <!-- STEP 1: EXPLORE -->
+      <section class="step-panel active" id="step-explore">
+        <div class="step-header">
+          <span class="step-number">STEP 01</span>
+          <h1 class="step-title">Upload your content</h1>
+          <p class="step-subtitle">Upload an image and add your messaging to get started.</p>
+        </div>
+
+        <div class="explore-layout">
+          <!-- Left: Image Upload -->
+          <div class="explore-left">
+            <div class="upload-card" id="upload-image-zone">
+              <input type="file" id="image-input" accept="image/jpeg,image/png" hidden>
+              <div class="upload-content">
+                <div class="upload-icon-wrapper">
+                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#00338D" stroke-width="1.5">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="17 8 12 3 7 8"/>
+                    <line x1="12" y1="3" x2="12" y2="15"/>
+                  </svg>
+                </div>
+                <h3 class="upload-title">Upload image</h3>
+                <p class="upload-hint">Drag and drop or click to browse</p>
+                <p class="upload-format">JPG, PNG up to 50MB</p>
+              </div>
+              <div class="upload-preview hidden" id="image-preview"></div>
+            </div>
+          </div>
+
+          <!-- Right: Text Inputs -->
+          <div class="explore-right">
+            <div class="input-group">
+              <label class="input-label">
+                Headline
+                <span class="input-font">(KPMG Bold)</span>
+              </label>
+              <textarea
+                id="headline-input"
+                class="input-field"
+                placeholder="Enter your headline"
+                maxlength="60"
+                rows="2"
+              ></textarea>
+              <span class="char-counter" id="headline-counter">0 / 60</span>
+            </div>
+
+            <div class="input-group">
+              <label class="input-label">
+                Subheading
+                <span class="input-font">(Univers)</span>
+              </label>
+              <textarea
+                id="subheading-input"
+                class="input-field"
+                placeholder="Enter your subheading"
+                maxlength="120"
+                rows="2"
+              ></textarea>
+              <span class="char-counter" id="subheading-counter">0 / 120</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bottom: Tip + Continue -->
+        <div class="explore-footer">
+          <div class="tip-box">
+            <span class="tip-icon">&#10022;</span>
+            <p class="tip-text">Tip: Strong headlines and clear imagery help AI create more impactful compositions.</p>
+          </div>
+          <button class="btn-primary btn-continue" id="btn-continue-explore">
+            Continue
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="5" y1="12" x2="19" y2="12"/>
+              <polyline points="12 5 19 12 12 19"/>
+            </svg>
+          </button>
+        </div>
+      </section>
+
+      <!-- STEP 2: COMPOSE -->
+      <section class="step-panel" id="step-compose">
+        <div class="step-header">
+          <span class="step-number">STEP 02</span>
+          <h1 class="step-title">Choose dimensions</h1>
+          <p class="step-subtitle">Select one or more dimensions for your composition.</p>
+        </div>
+
+        <div class="compose-layout">
+          <!-- Social Media -->
+          <div class="preset-category">
+            <h3 class="preset-category-title">SOCIAL MEDIA</h3>
+            <div class="preset-grid" id="social-presets"></div>
+          </div>
+
+          <!-- Web Banners -->
+          <div class="preset-category">
+            <h3 class="preset-category-title">WEB BANNERS</h3>
+            <div class="preset-grid" id="web-presets"></div>
+          </div>
+
+          <!-- Presentation / Print -->
+          <div class="preset-category">
+            <h3 class="preset-category-title">PRESENTATION / PRINT</h3>
+            <div class="preset-grid" id="print-presets"></div>
+          </div>
+        </div>
+
+        <div class="compose-footer">
+          <button class="btn-secondary" id="btn-back-compose">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="19" y1="12" x2="5" y2="12"/>
+              <polyline points="12 19 5 12 12 5"/>
+            </svg>
+            Back
+          </button>
+          <button class="btn-primary btn-continue" id="btn-continue-compose">
+            Continue
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="5" y1="12" x2="19" y2="12"/>
+              <polyline points="12 5 19 12 12 19"/>
+            </svg>
+          </button>
+        </div>
+      </section>
+
+      <!-- STEP 3: REFINE -->
+      <section class="step-panel" id="step-refine">
+        <div class="step-header">
+          <span class="step-number">STEP 03</span>
+          <h1 class="step-title">Refine your composition</h1>
+          <p class="step-subtitle">Review and refine your composition. Click any element to make adjustments.</p>
+        </div>
+
+        <div class="refine-layout">
+          <!-- Left: Canvas -->
+          <div class="refine-canvas-area">
+            <div class="canvas-wrapper" id="canvas-wrapper">
+              <canvas id="main-canvas"></canvas>
+            </div>
+            <div class="canvas-toolbar">
+              <div class="toolbar-group">
+                <button class="tool-btn" id="tool-zoom-in" title="Zoom In">+</button>
+                <span id="zoom-level">100%</span>
+                <button class="tool-btn" id="tool-zoom-out" title="Zoom Out">−</button>
+                <button class="tool-btn" id="tool-fit" title="Fit to Screen">&#8634;</button>
+              </div>
+              <div class="toolbar-group">
+                <button class="tool-btn" id="tool-grid" title="Toggle Grid">#</button>
+                <button class="tool-btn" id="tool-snap" title="Snap to Grid">&#128204;</button>
+              </div>
+              <div class="toolbar-group">
+                <button class="tool-btn" id="tool-pan" title="Pan Mode">&#9995;</button>
+                <button class="tool-btn" id="tool-analyze" title="AI Analysis">&#9889;</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right: Brand Check Panel -->
+          <div class="refine-sidebar">
+            <div class="brand-check-panel">
+              <h3 class="panel-title">Brand check</h3>
+
+              <div class="checklist" id="brand-checklist">
+                <div class="check-item" data-check="logo">
+                  <div class="check-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="3" y="3" width="7" height="7"/>
+                      <rect x="14" y="3" width="7" height="7"/>
+                      <rect x="14" y="14" width="7" height="7"/>
+                      <rect x="3" y="14" width="7" height="7"/>
+                    </svg>
+                  </div>
+                  <div class="check-info">
+                    <span class="check-name">Logo usage</span>
+                    <span class="check-desc">KPMG logo is clear and compliant</span>
+                  </div>
+                  <div class="check-status pending" id="check-logo">&#9675;</div>
+                </div>
+
+                <div class="check-item" data-check="colors">
+                  <div class="check-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/>
+                    </svg>
+                  </div>
+                  <div class="check-info">
+                    <span class="check-name">Colors</span>
+                    <span class="check-desc">On-brand colors are used correctly</span>
+                  </div>
+                  <div class="check-status pending" id="check-colors">&#9675;</div>
+                </div>
+
+                <div class="check-item" data-check="typography">
+                  <div class="check-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <polyline points="4 7 4 4 20 4 20 7"/>
+                      <line x1="9" y1="20" x2="15" y2="20"/>
+                      <line x1="12" y1="4" x2="12" y2="20"/>
+                    </svg>
+                  </div>
+                  <div class="check-info">
+                    <span class="check-name">Typography</span>
+                    <span class="check-desc">Typography aligns with brand guidelines</span>
+                  </div>
+                  <div class="check-status pending" id="check-typography">&#9675;</div>
+                </div>
+
+                <div class="check-item" data-check="imagery">
+                  <div class="check-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="3" y="3" width="18" height="18" rx="2"/>
+                      <circle cx="8.5" cy="8.5" r="1.5"/>
+                      <polyline points="21 15 16 10 5 21"/>
+                    </svg>
+                  </div>
+                  <div class="check-info">
+                    <span class="check-name">Imagery</span>
+                    <span class="check-desc">Image style matches brand standards</span>
+                  </div>
+                  <div class="check-status pending" id="check-imagery">&#9675;</div>
+                </div>
+
+                <div class="check-item" data-check="layout">
+                  <div class="check-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="3" y="3" width="7" height="7"/>
+                      <rect x="14" y="3" width="7" height="7"/>
+                      <rect x="14" y="14" width="7" height="7"/>
+                      <rect x="3" y="14" width="7" height="7"/>
+                    </svg>
+                  </div>
+                  <div class="check-info">
+                    <span class="check-name">Layout</span>
+                    <span class="check-desc">Clean, balanced and on-brand layout</span>
+                  </div>
+                  <div class="check-status pending" id="check-layout">&#9675;</div>
+                </div>
+              </div>
+
+              <!-- Overall Score -->
+              <div class="overall-score-card">
+                <div class="overall-ring">
+                  <svg viewBox="0 0 60 60" width="60" height="60">
+                    <circle cx="30" cy="30" r="26" fill="none" stroke="#E8ECF4" stroke-width="4"/>
+                    <circle cx="30" cy="30" r="26" fill="none" stroke="#00338D" stroke-width="4"
+                      stroke-dasharray="163.4" stroke-dashoffset="163.4" stroke-linecap="round"
+                      id="overall-score-circle" transform="rotate(-90 30 30)"/>
+                  </svg>
+                  <span class="overall-value" id="overall-score-value">0</span>
+                </div>
+                <div class="overall-info">
+                  <span class="overall-label">Overall Brand Score</span>
+                  <span class="overall-desc" id="overall-score-desc">Analyzing composition...</span>
+                </div>
+                <button class="overall-refresh" id="btn-refresh-score" title="Recalculate">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="23 4 23 10 17 10"/>
+                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="refine-footer">
+          <button class="btn-secondary" id="btn-back-refine">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="19" y1="12" x2="5" y2="12"/>
+              <polyline points="12 19 5 12 12 5"/>
+            </svg>
+            Back
+          </button>
+          <button class="btn-primary btn-continue" id="btn-continue-refine">
+            Continue to Export
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="5" y1="12" x2="19" y2="12"/>
+              <polyline points="12 5 19 12 12 19"/>
+            </svg>
+          </button>
+        </div>
+      </section>
+
+      <!-- STEP 4: EXPORT -->
+      <section class="step-panel" id="step-export">
+        <div class="step-header">
+          <span class="step-number">STEP 04</span>
+          <h1 class="step-title">Export your composition</h1>
+          <p class="step-subtitle">Choose formats and destinations for your final output.</p>
+        </div>
+
+        <div class="export-layout">
+          <!-- Left: Preview -->
+          <div class="export-preview-area">
+            <div class="export-preview-card" id="export-preview">
+              <div class="preview-placeholder">
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#C5D0E0" stroke-width="1">
+                  <rect x="3" y="3" width="18" height="18" rx="2"/>
+                  <circle cx="8.5" cy="8.5" r="1.5"/>
+                  <polyline points="21 15 16 10 5 21"/>
+                </svg>
+                <p>Your composition will appear here</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right: Export Settings -->
+          <div class="export-settings">
+            <h3 class="panel-title">Export settings</h3>
+
+            <div class="export-section">
+              <label class="export-label">Format</label>
+              <div class="format-grid" id="format-grid">
+                <div class="format-card active" data-format="png">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#00338D" stroke-width="1.5">
+                    <rect x="3" y="3" width="18" height="18" rx="2"/>
+                    <circle cx="8.5" cy="8.5" r="1.5"/>
+                    <polyline points="21 15 16 10 5 21"/>
+                  </svg>
+                  <span class="format-name">PNG</span>
+                  <span class="format-desc">High quality</span>
+                  <div class="format-check">&#10003;</div>
+                </div>
+                <div class="format-card" data-format="jpg">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#00338D" stroke-width="1.5">
+                    <rect x="3" y="3" width="18" height="18" rx="2"/>
+                    <circle cx="8.5" cy="8.5" r="1.5"/>
+                    <polyline points="21 15 16 10 5 21"/>
+                  </svg>
+                  <span class="format-name">JPG</span>
+                  <span class="format-desc">Smaller file</span>
+                </div>
+                <div class="format-card" data-format="pdf">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#00338D" stroke-width="1.5">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="16" y1="13" x2="8" y2="13"/>
+                    <line x1="16" y1="17" x2="8" y2="17"/>
+                    <polyline points="10 9 9 9 8 9"/>
+                  </svg>
+                  <span class="format-name">PDF</span>
+                  <span class="format-desc">Print ready</span>
+                </div>
+                <div class="format-card" data-format="mp4">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#00338D" stroke-width="1.5">
+                    <rect x="2" y="2" width="20" height="20" rx="2.18"/>
+                    <line x1="7" y1="2" x2="7" y2="22"/>
+                    <line x1="17" y1="2" x2="17" y2="22"/>
+                    <line x1="2" y1="12" x2="22" y2="12"/>
+                    <line x1="2" y1="7" x2="7" y2="7"/>
+                    <line x1="2" y1="17" x2="7" y2="17"/>
+                    <line x1="17" y1="17" x2="22" y2="17"/>
+                    <line x1="17" y1="7" x2="22" y2="7"/>
+                  </svg>
+                  <span class="format-name">MP4</span>
+                  <span class="format-desc">Video</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="export-section">
+              <div class="export-guarantee">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00338D" stroke-width="2">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                </svg>
+                <div class="guarantee-text">
+                  <strong>Your export will be watermark free</strong>
+                  <span>High quality, on-brand and ready to use.</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="export-section">
+              <label class="export-label">Quality</label>
+              <div class="quality-slider">
+                <input type="range" id="export-quality" min="50" max="100" value="95">
+                <span class="quality-value" id="quality-value">95%</span>
+              </div>
+            </div>
+
+            <div class="export-section">
+              <label class="export-label">DPI</label>
+              <select id="export-dpi" class="export-select">
+                <option value="72">72 DPI (Web)</option>
+                <option value="150">150 DPI (Email)</option>
+                <option value="300" selected>300 DPI (Print)</option>
+                <option value="600">600 DPI (High Print)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="export-footer">
+          <button class="btn-secondary" id="btn-back-export">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="19" y1="12" x2="5" y2="12"/>
+              <polyline points="12 19 5 12 12 5"/>
+            </svg>
+            Back
+          </button>
+          <button class="btn-primary btn-export" id="btn-export">
+            Export Composition
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="5" y1="12" x2="19" y2="12"/>
+              <polyline points="12 5 19 12 12 19"/>
+            </svg>
+          </button>
+        </div>
+      </section>
+    </main>
 
     <!-- Loading Overlay -->
-    <div id="loading-overlay" class="loading-overlay" style="display:none;">
-        <div class="loading-content">
-            <div class="loading-spinner"></div>
-            <h2>Loading AI Models</h2>
-            <p id="loading-text">Initializing ONNX Runtime...</p>
-            <div class="loading-progress">
-                <div class="loading-bar" id="loading-bar"></div>
-            </div>
+    <div class="loading-overlay hidden" id="loading-overlay">
+      <div class="loading-content">
+        <div class="loading-spinner"></div>
+        <h2 id="loading-title">Processing...</h2>
+        <p id="loading-text">Please wait</p>
+        <div class="loading-progress">
+          <div class="loading-bar" id="loading-bar"></div>
         </div>
+      </div>
     </div>
 
     <!-- Export Modal -->
-    <div id="export-modal" class="modal" style="display:none;">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>Export Asset</h2>
-                <button class="modal-close">×</button>
-            </div>
-            <div class="modal-body">
-                <div class="export-preview" id="export-preview"></div>
-                <div class="export-details">
-                    <div class="detail-row">
-                        <span>Format:</span>
-                        <span id="modal-format">PNG</span>
-                    </div>
-                    <div class="detail-row">
-                        <span>Dimensions:</span>
-                        <span id="modal-dims">1080 × 1080 px</span>
-                    </div>
-                    <div class="detail-row">
-                        <span>DPI:</span>
-                        <span id="modal-dpi">300</span>
-                    </div>
-                    <div class="detail-row">
-                        <span>File Size:</span>
-                        <span id="modal-size">—</span>
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary modal-cancel">Cancel</button>
-                <button class="btn btn-primary" id="btn-download">Download</button>
-            </div>
+    <div class="modal hidden" id="export-modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>Export Complete</h2>
+          <button class="modal-close" id="modal-close">&times;</button>
         </div>
+        <div class="modal-body">
+          <div class="export-preview" id="export-preview-img"></div>
+          <div class="export-details" id="export-details"></div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" id="btn-modal-close">Close</button>
+          <button class="btn-primary" id="btn-download">Download</button>
+        </div>
+      </div>
     </div>
 
-    <!-- Scripts -->
-    <script src="app/presets/asset-presets.js"></script>
-        <script src="app/engine/orchestration-engine.js"></script>
-    <script src="app/engine/window-motif-engine.js"></script>
-    <script src="app/engine/image-extension-engine.js"></script>
-    <script src="app/engine/color-treatment-engine.js"></script>
-    <script src="app/engine/typography-engine.js"></script>
-    <script src="app/engine/accessibility-validator.js"></script>
-    <script src="app/engine/grid-system.js"></script>
-    <script src="app/engine/ai-analysis.js"></script>
-    <script src="app/engine/composition-engine.js"></script>
-    <script src="app/engine/validation-rules.js"></script>
-    <script src="app/engine/export-system.js"></script>
-    <script src="app/components/canvas-manager.js"></script>
-    <script src="app/components/layers-panel.js"></script>
-    <script src="app/components/ui-controls.js"></script>
-    <script src="app/components/demo-helper.js"></script>
-    <script src="app.js"></script>
+    <!-- Contextual Tooltip (for manual editing) -->
+    <div class="contextual-tooltip hidden" id="contextual-tooltip">
+      <div class="tooltip-header">
+        <span class="tooltip-title" id="tooltip-title">Element</span>
+        <button class="tooltip-close" id="tooltip-close">&times;</button>
+      </div>
+      <div class="tooltip-actions" id="tooltip-actions"></div>
+    </div>
+
+    <!-- Color Picker Popup -->
+    <div class="color-picker-popup hidden" id="color-picker-popup">
+      <div class="picker-header">
+        <span>Overlay Color</span>
+        <button class="picker-close" id="picker-close">&times;</button>
+      </div>
+      <div class="picker-presets">
+        <button class="preset-btn active" data-treatment="blue-multiply">
+          <span class="preset-swatch" style="background:#1E49E2"></span>
+          <span>Blue Multiply</span>
+        </button>
+        <button class="preset-btn" data-treatment="cobalt-linear">
+          <span class="preset-swatch" style="background:#1E49E2"></span>
+          <span>Cobalt Linear Light</span>
+        </button>
+        <button class="preset-btn" data-treatment="pacific-gradient">
+          <span class="preset-swatch" style="background:linear-gradient(135deg,#1E49E2,#5FD7FF)"></span>
+          <span>Pacific Gradient</span>
+        </button>
+      </div>
+      <div class="picker-custom">
+        <label>Custom Color</label>
+        <input type="color" id="custom-color" value="#1E49E2">
+      </div>
+      <div class="picker-blend">
+        <label>Blend Mode</label>
+        <select id="blend-mode">
+          <option value="multiply">Multiply</option>
+          <option value="hard-light">Hard Light</option>
+          <option value="color">Color</option>
+          <option value="overlay">Overlay</option>
+        </select>
+      </div>
+      <div class="picker-opacity">
+        <label>Opacity</label>
+        <input type="range" id="opacity-slider" min="0" max="100" value="85">
+        <span id="opacity-value">85%</span>
+      </div>
+      <div class="picker-actions">
+        <button class="btn-secondary" id="btn-picker-cancel">Cancel</button>
+        <button class="btn-primary" id="btn-picker-apply">Apply</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Engine Scripts -->
+  <script src="app/presets/asset-presets.js"></script>
+  <script src="app/engine/state-manager.js"></script>
+  <script src="app/engine/grid-system.js"></script>
+  <script src="app/engine/ai-analysis.js"></script>
+  <script src="app/engine/composition-engine.js"></script>
+  <script src="app/engine/validation-rules.js"></script>
+  <script src="app/engine/export-system.js"></script>
+  <script src="app/engine/orchestration-engine.js"></script>
+
+  <script src="app/engine/typography-composition-engine.js"></script>
+  <script src="app/engine/accessibility-engine.js"></script>
+
+  <!-- Component Scripts -->
+  <script src="app/components/canvas-manager.js"></script>
+  <script src="app/components/ui-controls.js"></script>
+  <script src="app/components/layers-panel.js"></script>
+  <script src="app/components/typography-renderer.js"></script>
+  <script src="app/components/interaction-manager.js"></script>
+  <script src="app/components/edit-mode-controller.js"></script>
+  <script src="app/components/contextual-tooltip.js"></script>
+  <script src="app/components/color-picker.js"></script>
+
+  <!-- Main App -->
+  <script src="app.js"></script>
 </body>
 </html>

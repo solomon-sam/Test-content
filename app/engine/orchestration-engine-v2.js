@@ -1,22 +1,27 @@
 /**
  * Orchestration Engine v2.0
  * 12-stage composition pipeline with state machine
- * FIXED: Logo strictly top-left, no saliency-based positioning
+ * FIXED: Class name matches app.js (OrchestrationEngineV2)
+ * FIXED: Constructor accepts 3 args, engines injected via setEngines()
+ * FIXED: Callbacks are direct properties (onStageChange, onComplete, onError)
+ * FIXED: runAutoPipeline accepts (imageElement, logoElement, brandSettings, options)
+ * ADDED: runPreExportValidation(), runExportPipeline(), calculateBrandScore(), destroy()
  */
 
-class OrchestrationEngine {
-  constructor(canvasManager, gridSystem, stateManager, 
-              compositionEngine, typographyEngine, complianceEngine,
-              constraintEngine, aiAnalysisEngine, exportSystem) {
+class OrchestrationEngineV2 {
+  constructor(canvasManager, gridSystem, stateManager) {
     this.canvasManager = canvasManager;
     this.gridSystem = gridSystem;
     this.stateManager = stateManager;
-    this.compositionEngine = compositionEngine;
-    this.typographyEngine = typographyEngine;
-    this.complianceEngine = complianceEngine;
-    this.constraintEngine = constraintEngine;
-    this.aiAnalysisEngine = aiAnalysisEngine;
-    this.exportSystem = exportSystem;
+
+    // Injected engines (via setEngines)
+    this.aiEngine = null;
+    this.compositionEngine = null;
+    this.typographyEngine = null;
+    this.accessibilityEngine = null;
+    this.complianceEngine = null;
+    this.constraintEngine = null;
+    this.exportSystem = null;
 
     // State machine
     this.state = 'IDLE';
@@ -25,13 +30,25 @@ class OrchestrationEngine {
     this.abortController = null;
     this.stageTimings = [];
 
-    // Event callbacks
-    this.callbacks = {
-      onStageChange: null,
-      onComplete: null,
-      onError: null,
-      onProgress: null
-    };
+    // Event callbacks (direct properties, not callback map)
+    this.onStageChange = null;
+    this.onComplete = null;
+    this.onError = null;
+  }
+
+  /**
+   * Inject all sub-engines (called by app.js initEngines)
+   */
+  setEngines({ aiEngine, compositionEngine, typographyEngine, 
+               accessibilityEngine, complianceEngine, 
+               constraintEngine, exportSystem }) {
+    this.aiEngine = aiEngine;
+    this.compositionEngine = compositionEngine;
+    this.typographyEngine = typographyEngine;
+    this.accessibilityEngine = accessibilityEngine;
+    this.complianceEngine = complianceEngine;
+    this.constraintEngine = constraintEngine;
+    this.exportSystem = exportSystem;
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -42,10 +59,6 @@ class OrchestrationEngine {
     const oldState = this.state;
     this.state = newState;
     this.stateManager.set('orchestration.state', newState);
-
-    if (this.callbacks.onStageChange) {
-      this.callbacks.onStageChange(newState, oldState, this.pipelineStage, this.totalStages);
-    }
   }
 
   getState() {
@@ -64,27 +77,17 @@ class OrchestrationEngine {
   // PIPELINE STAGES
   // ═══════════════════════════════════════════════════════════════
 
-  /**
-   * Stage 1: Initialize
-   */
   async stageInitialize() {
     this.setState('AUTO_COMPOSING');
     this.pipelineStage = 1;
     this.stageTimings = [];
 
-    // Reset composition state
     this.stateManager.set('composition', {
-      logo: null,
-      tagline: null,
-      metadata: null,
-      motif: null,
-      headline: null,
-      subheading: null,
-      swoosh: null,
-      treatment: null,
-      background: null
+      logo: null, tagline: null, metadata: null,
+      motif: null, headline: null, subheading: null,
+      swoosh: null, treatment: null, background: null,
+      lastModified: null
     });
-
     this.stateManager.set('imageAnalysis', null);
     this.stateManager.set('typographyComposition', null);
     this.stateManager.set('complianceReport', null);
@@ -93,17 +96,16 @@ class OrchestrationEngine {
     return { status: 'complete', message: 'Initialization complete' };
   }
 
-  /**
-   * Stage 2: Load Background Image
-   */
-  async stageLoadBackground(imageUrl) {
+  async stageLoadBackground(imageElement) {
     this.pipelineStage = 2;
 
     return new Promise((resolve, reject) => {
-      this.canvasManager.createBackground(imageUrl, (img) => {
+      // imageElement is an HTMLImageElement, not a URL string
+      const url = imageElement.src;
+      this.canvasManager.createBackground(url, (img) => {
         if (img) {
           this.stateManager.set('composition.background', {
-            url: imageUrl,
+            url: url,
             width: img.width,
             height: img.height
           });
@@ -115,20 +117,16 @@ class OrchestrationEngine {
     });
   }
 
-  /**
-   * Stage 3: AI Image Analysis
-   */
-  async stageAnalyzeImage() {
+  async stageAnalyzeImage(imageElement) {
     this.pipelineStage = 3;
 
-    const bg = this.canvasManager.objects.background;
-    if (!bg || !bg._element) {
+    if (!imageElement) {
       return { status: 'skipped', message: 'No background to analyze' };
     }
 
     try {
-      const analysis = await this.aiAnalysisEngine.analyze(
-        bg._element,
+      const analysis = await this.aiEngine.analyze(
+        imageElement,
         this.gridSystem.canvasWidth,
         this.gridSystem.canvasHeight
       );
@@ -142,7 +140,7 @@ class OrchestrationEngine {
       };
     } catch (error) {
       console.warn('AI analysis failed, using fallback:', error);
-      const fallback = this.aiAnalysisEngine.getFallbackAnalysis(
+      const fallback = this.aiEngine.getFallbackAnalysis(
         this.gridSystem.canvasWidth,
         this.gridSystem.canvasHeight
       );
@@ -156,9 +154,6 @@ class OrchestrationEngine {
     }
   }
 
-  /**
-   * Stage 4: Apply Color Treatment
-   */
   async stageApplyTreatment(treatmentType = 'blue-multiply') {
     this.pipelineStage = 4;
 
@@ -170,17 +165,13 @@ class OrchestrationEngine {
     };
   }
 
-  /**
-   * Stage 5: Place Logo (TOP-LEFT, LOCKED)
-   * FIXED: Logo is ALWAYS top-left, never based on saliency
-   */
-  async stagePlaceLogo(logoUrl) {
+  async stagePlaceLogo(logoImage) {
     this.pipelineStage = 5;
 
     const logoZone = this.gridSystem.getLogoZone();
 
-    // FIXED: Logo is always placed at top-left, locked
-    // No saliency-based positioning allowed per KPMG brand guidelines
+    // If logoImage provided, use its URL; otherwise use default
+    const logoUrl = logoImage ? logoImage.src : 'assets/kpmg-logo.svg';
     this.canvasManager.createLogo({ logoUrl });
 
     this.stateManager.set('composition.logo', {
@@ -197,36 +188,31 @@ class OrchestrationEngine {
     };
   }
 
-  /**
-   * Stage 6: Place Tagline (BOTTOM-LEFT, LOCKED)
-   */
-  async stagePlaceTagline(text) {
+  async stagePlaceTagline(brandSettings) {
     this.pipelineStage = 6;
 
     const taglineZone = this.gridSystem.getTaglineZone();
+    const text = brandSettings?.tagline || 'KPMG. Make the Difference.';
     const tagline = this.canvasManager.createTagline(text, taglineZone.x, taglineZone.y);
 
     this.stateManager.set('composition.tagline', {
       x: taglineZone.x,
       y: taglineZone.y,
-      text: text || 'KPMG. Make the Difference.',
+      text: text,
       locked: true
     });
 
     return { status: 'complete', message: 'Tagline placed' };
   }
 
-  /**
-   * Stage 7: Place Metadata (BOTTOM-RIGHT, LOCKED)
-     */
-  async stagePlaceMetadata(metadata) {
+  async stagePlaceMetadata(brandSettings) {
     this.pipelineStage = 7;
 
     const metadataZone = this.gridSystem.getMetadataZone();
-    const metaData = metadata || {
-      url: 'kpmg.com',
-      date: new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
-      cta: ''
+    const metaData = {
+      url: brandSettings?.url || 'kpmg.com',
+      date: brandSettings?.date || new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
+      cta: brandSettings?.cta || ''
     };
 
     this.canvasManager.createMetadata(metaData, metadataZone.x, metadataZone.y);
@@ -241,9 +227,6 @@ class OrchestrationEngine {
     return { status: 'complete', message: 'Metadata placed' };
   }
 
-  /**
-   * Stage 8: Place Motif Window
-   */
   async stagePlaceMotif(motifPosition) {
     this.pipelineStage = 8;
 
@@ -253,26 +236,21 @@ class OrchestrationEngine {
     let position;
 
     if (motifPosition) {
-      // Use provided position
       position = motifPosition;
     } else if (analysis && analysis.saliency) {
-      // Use focal point from analysis, but ensure logo safety
       const focal = analysis.saliency.focalPoint;
       const grid = this.gridSystem;
 
-      // Ensure motif doesn't overlap logo safe zone
-      const logoSafeRight = grid.margin + grid.cellWidth * 4; // logo width + 2 grid safety
-      const logoSafeBottom = grid.margin + grid.cellHeight * 3; // logo height + 2 grid safety
+      const logoSafeRight = grid.margin + grid.cellWidth * 4;
+      const logoSafeBottom = grid.margin + grid.cellHeight * 3;
 
       let motifX = focal.x - grid.cellWidth * 3;
       let motifY = focal.y - grid.cellHeight * 2.5;
 
-      // Push away from logo if needed
       if (motifX < logoSafeRight && motifY < logoSafeBottom) {
         motifX = logoSafeRight + grid.cellWidth;
       }
 
-      // Ensure 1 grid unit margin from edge
       const edgeMargin = grid.margin + grid.cellWidth;
       motifX = Math.max(edgeMargin, Math.min(motifX, grid.canvasWidth - edgeMargin - grid.cellWidth * 6));
       motifY = Math.max(edgeMargin, Math.min(motifY, grid.canvasHeight - edgeMargin - grid.cellHeight * 5));
@@ -284,7 +262,6 @@ class OrchestrationEngine {
         height: grid.cellHeight * 5
       };
     } else {
-      // Default position
       const grid = this.gridSystem;
       position = {
         x: grid.margin + grid.cellWidth * 4,
@@ -294,7 +271,6 @@ class OrchestrationEngine {
       };
     }
 
-    // Snap to grid
     const snapped = this.gridSystem.snapToGrid(position.x, position.y, position.width, position.height);
 
     const motif = this.canvasManager.createMotif(snapped.x, snapped.y, snapped.width, snapped.height);
@@ -314,9 +290,6 @@ class OrchestrationEngine {
     };
   }
 
-  /**
-   * Stage 9: Compose Typography
-   */
   async stageComposeTypography(headlineText, subheadingText) {
     this.pipelineStage = 9;
 
@@ -336,12 +309,10 @@ class OrchestrationEngine {
 
     this.stateManager.set('typographyComposition', typography);
 
-    // Create headline text objects
     const headline = typography.headline;
     const textZones = this.gridSystem.getTextZones();
-    const textZone = textZones[0]; // Default bottom
+    const textZone = textZones[0];
 
-    // Position headline in safe zone, avoiding logo
     const logoZone = this.gridSystem.getLogoZone();
     const safeX = Math.max(textZone.x, logoZone.x + logoZone.width + this.gridSystem.cellWidth * 2);
     const safeY = Math.max(textZone.y, logoZone.y + logoZone.height + this.gridSystem.cellHeight * 2);
@@ -356,7 +327,6 @@ class OrchestrationEngine {
       }
     );
 
-    // Create subheading if present
     if (typography.subheading) {
       const subY = safeY + headline.totalHeight + this.gridSystem.baselineUnit;
       this.canvasManager.createSubheading(
@@ -374,9 +344,6 @@ class OrchestrationEngine {
     };
   }
 
-  /**
-   * Stage 10: Place Swoosh
-   */
   async stagePlaceSwoosh(side = 'left') {
     this.pipelineStage = 10;
 
@@ -393,15 +360,12 @@ class OrchestrationEngine {
       y: swoosh.top,
       width: swoosh.width * swoosh.scaleX,
       height: swoosh.height * swoosh.scaleY,
-      angle: 0 // Horizontal only
+      angle: 0
     });
 
     return { status: 'complete', message: `Swoosh placed on ${side}` };
   }
 
-  /**
-   * Stage 11: Validate Composition
-   */
   async stageValidate() {
     this.pipelineStage = 11;
 
@@ -414,13 +378,9 @@ class OrchestrationEngine {
     };
   }
 
-  /**
-   * Stage 12: Finalize
-   */
   async stageFinalize() {
     this.pipelineStage = 12;
 
-    // Bring locked elements to front
     const lockedElements = ['logo', 'tagline', 'metadata'];
     lockedElements.forEach(name => {
       const obj = this.canvasManager.objects[name];
@@ -429,16 +389,12 @@ class OrchestrationEngine {
       }
     });
 
-    // Ensure logo is at very top
     const logo = this.canvasManager.objects.logo;
     if (logo) {
       this.canvasManager.canvas.bringToFront(logo);
     }
 
     this.setState('MANUAL_EDITING');
-
-    // Start live validation
-    this.startLiveValidation();
 
     return { 
       status: 'complete', 
@@ -447,72 +403,55 @@ class OrchestrationEngine {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // FULL PIPELINE
+  // FULL PIPELINE (matches app.js signature)
   // ═══════════════════════════════════════════════════════════════
 
   /**
    * Run full auto-composition pipeline
+   * app.js calls: runAutoPipeline(backgroundImage, logoImage, brandSettings, { preset })
    */
-  async runAutoPipeline(options = {}) {
+  async runAutoPipeline(backgroundImage, logoImage, brandSettings, options = {}) {
     const startTime = performance.now();
     this.abortController = new AbortController();
     const signal = this.abortController.signal;
 
+    const headlineText = this.stateManager.get('headline') || '';
+    const subheadingText = this.stateManager.get('subheading') || '';
+
     try {
-      // Stage 1: Initialize
       await this.runStage(() => this.stageInitialize(), signal);
 
-      // Stage 2: Load Background
-      if (options.imageUrl) {
-        await this.runStage(() => this.stageLoadBackground(options.imageUrl), signal);
+      if (backgroundImage) {
+        await this.runStage(() => this.stageLoadBackground(backgroundImage), signal);
       }
 
-      // Stage 3: Analyze Image
-      await this.runStage(() => this.stageAnalyzeImage(), signal);
-
-      // Stage 4: Apply Treatment
-      await this.runStage(() => this.stageApplyTreatment(options.treatmentType), signal);
-
-      // Stage 5: Place Logo (TOP-LEFT, LOCKED)
-      await this.runStage(() => this.stagePlaceLogo(options.logoUrl), signal);
-
-      // Stage 6: Place Tagline
-      await this.runStage(() => this.stagePlaceTagline(options.tagline), signal);
-
-      // Stage 7: Place Metadata
-      await this.runStage(() => this.stagePlaceMetadata(options.metadata), signal);
-
-      // Stage 8: Place Motif
-      await this.runStage(() => this.stagePlaceMotif(options.motifPosition), signal);
-
-      // Stage 9: Compose Typography
-      await this.runStage(() => this.stageComposeTypography(options.headline, options.subheading), signal);
-
-      // Stage 10: Place Swoosh
-      await this.runStage(() => this.stagePlaceSwoosh(options.swooshSide), signal);
-
-      // Stage 11: Validate
+      await this.runStage(() => this.stageAnalyzeImage(backgroundImage), signal);
+      await this.runStage(() => this.stageApplyTreatment('blue-multiply'), signal);
+      await this.runStage(() => this.stagePlaceLogo(logoImage), signal);
+      await this.runStage(() => this.stagePlaceTagline(brandSettings), signal);
+      await this.runStage(() => this.stagePlaceMetadata(brandSettings), signal);
+      await this.runStage(() => this.stagePlaceMotif(null), signal);
+      await this.runStage(() => this.stageComposeTypography(headlineText, subheadingText), signal);
+      await this.runStage(() => this.stagePlaceSwoosh('left'), signal);
       await this.runStage(() => this.stageValidate(), signal);
-
-      // Stage 12: Finalize
       await this.runStage(() => this.stageFinalize(), signal);
 
       const totalTime = performance.now() - startTime;
 
-      if (this.callbacks.onComplete) {
-        this.callbacks.onComplete({
-          status: 'success',
-          totalTime,
-          stages: this.stageTimings,
-          finalState: this.stateManager.state
-        });
-      }
-
-      return {
+      const results = {
         status: 'success',
         totalTime,
-        stages: this.stageTimings
+        stages: this.stageTimings,
+        analysis: this.stateManager.get('imageAnalysis'),
+        placements: this.stateManager.get('composition'),
+        typography: this.stateManager.get('typographyComposition')
       };
+
+      if (this.onComplete) {
+        this.onComplete(results);
+      }
+
+      return results;
 
     } catch (error) {
       if (error.name === 'AbortError') {
@@ -522,17 +461,14 @@ class OrchestrationEngine {
 
       this.setState('ERROR');
 
-      if (this.callbacks.onError) {
-        this.callbacks.onError(error);
+      if (this.onError) {
+        this.onError(error);
       }
 
       throw error;
     }
   }
 
-  /**
-   * Run individual stage with timing and abort support
-   */
   async runStage(stageFn, signal) {
     if (signal.aborted) {
       throw new Error('AbortError');
@@ -550,14 +486,8 @@ class OrchestrationEngine {
         status: result.status
       });
 
-      if (this.callbacks.onProgress) {
-        this.callbacks.onProgress({
-          stage: this.pipelineStage,
-          totalStages: this.totalStages,
-          status: result.status,
-          message: result.message,
-          time: stageTime
-        });
+      if (this.onStageChange) {
+        this.onStageChange(result.message || `Stage ${this.pipelineStage}`, this.pipelineStage, this.totalStages);
       }
 
       return result;
@@ -573,9 +503,6 @@ class OrchestrationEngine {
     }
   }
 
-  /**
-   * Abort running pipeline
-   */
   abort() {
     if (this.abortController) {
       this.abortController.abort();
@@ -583,85 +510,64 @@ class OrchestrationEngine {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // MANUAL EDITING
+  // EXPORT METHODS (called by app.js)
   // ═══════════════════════════════════════════════════════════════
 
   /**
-   * Start live validation during manual editing
+   * Run pre-export validation
+   * app.js calls: await orchestrationEngine.runPreExportValidation()
    */
-  startLiveValidation() {
-    // Validation is triggered by constraint engine events
-    // Compliance engine validates on state changes
-  }
-
-  /**
-   * Validate before export
-   */
-  async validateBeforeExport() {
-    this.setState('VALIDATING');
-
+  async runPreExportValidation() {
     const report = this.complianceEngine.validateAll();
 
-    if (!this.complianceEngine.canExport()) {
-      this.setState('MANUAL_EDITING');
-      return {
-        canExport: false,
-        report,
-        message: 'Cannot export: compliance check failed'
-      };
+    const allIssues = [];
+    for (const [cat, result] of Object.entries(report.categories || {})) {
+      (result.issues || []).forEach(issue => {
+        allIssues.push({
+          ...issue,
+          category: cat
+        });
+      });
     }
 
-    this.setState('MANUAL_EDITING');
     return {
-      canExport: true,
-      report,
-      message: 'Ready for export'
+      canExport: report.overall !== 'FAIL',
+      issues: allIssues
     };
   }
 
   /**
-   * Export composition
+   * Run export pipeline
+   * app.js calls: await orchestrationEngine.runExportPipeline({ format, dpi, quality })
    */
-  async export(format, options) {
-    const validation = await this.validateBeforeExport();
+  async runExportPipeline({ format, dpi, quality }) {
+    return this.exportSystem.export(format, { dpi, quality });
+  }
 
-    if (!validation.canExport) {
-      throw new Error('Export blocked: ' + validation.message);
-    }
-
-    this.setState('EXPORTING');
-
-    try {
-      const result = await this.exportSystem.export(format, options);
-
-      this.setState('MANUAL_EDITING');
-      return result;
-    } catch (error) {
-      this.setState('MANUAL_EDITING');
-      throw error;
-    }
+  /**
+   * Calculate brand score
+   * app.js calls: orchestrationEngine.calculateBrandScore()
+   */
+  calculateBrandScore() {
+    const report = this.complianceEngine.getReport();
+    return report ? report.score : 0;
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // EVENT HANDLING
+  // CLEANUP
   // ═══════════════════════════════════════════════════════════════
 
-  on(event, callback) {
-    if (this.callbacks.hasOwnProperty('on' + event.charAt(0).toUpperCase() + event.slice(1))) {
-      this.callbacks['on' + event.charAt(0).toUpperCase() + event.slice(1)] = callback;
-    }
+  destroy() {
+    this.abort();
+    this.reset();
   }
 
-  off(event) {
-    const key = 'on' + event.charAt(0).toUpperCase() + event.slice(1);
-    if (this.callbacks.hasOwnProperty(key)) {
-      this.callbacks[key] = null;
-    }
+  reset() {
+    this.state = 'IDLE';
+    this.pipelineStage = 0;
+    this.stageTimings = [];
+    this.abortController = null;
   }
-
-  // ═══════════════════════════════════════════════════════════════
-  // UTILITY
-  // ═══════════════════════════════════════════════════════════════
 
   getProgress() {
     return {
@@ -675,14 +581,7 @@ class OrchestrationEngine {
   getStageTimings() {
     return [...this.stageTimings];
   }
-
-  reset() {
-    this.state = 'IDLE';
-    this.pipelineStage = 0;
-    this.stageTimings = [];
-    this.abortController = null;
-  }
 }
 
 // Make available globally
-window.OrchestrationEngine = OrchestrationEngine;
+window.OrchestrationEngineV2 = OrchestrationEngineV2;

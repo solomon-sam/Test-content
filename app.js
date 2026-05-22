@@ -1,9 +1,7 @@
 /**
- * BrandCompositionApp — Phase 4 Integrated (FIXED)
+ * BrandCompositionApp - Phase 4 Integrated (FIXED)
  * Main application controller with OrchestrationEngineV2,
  * PerformanceMonitor, ObjectPool, and Export Gate Enforcement.
- * 
- * FIXED: All engine class names and signatures match the fixed engine files.
  */
 
 class BrandCompositionApp {
@@ -74,7 +72,7 @@ class BrandCompositionApp {
       const start = performance.now();
       originalRequestRender();
       requestAnimationFrame(() => {
-        this.performanceMonitor?.recordRenderTime(performance.now() - start);
+        if (this.performanceMonitor) this.performanceMonitor.recordRenderTime(performance.now() - start);
       });
     };
 
@@ -140,7 +138,7 @@ class BrandCompositionApp {
     // Set up orchestration event callbacks
     this.orchestrationEngine.onStageChange = (stage, index, total) => {
       const percent = Math.round((index / total) * 100);
-      this.showLoading(`Stage: ${stage}...`, percent);
+      this.showLoading('Stage: ' + stage + '...', percent);
     };
 
     this.orchestrationEngine.onComplete = (results) => {
@@ -212,7 +210,8 @@ class BrandCompositionApp {
     if (qualitySlider) {
       qualitySlider.addEventListener('input', (e) => {
         const val = e.target.value;
-        document.getElementById('quality-value').textContent = val + '%';
+        const qualityValue = document.getElementById('quality-value');
+        if (qualityValue) qualityValue.textContent = val + '%';
         this.stateManager.set('exportQuality', parseInt(val));
       });
     }
@@ -256,7 +255,7 @@ class BrandCompositionApp {
       }
       if (e.key === 'Escape') {
         this.closeExportModal();
-        this.uiControls.hideLayersPanel();
+        if (this.uiControls) this.uiControls.hideLayersPanel();
       }
     });
 
@@ -280,7 +279,7 @@ class BrandCompositionApp {
 
   goToStep(step) {
     if (!this.stateManager.canGoToStep(step)) {
-      console.warn(`Cannot navigate to step: ${step}`);
+      console.warn('Cannot navigate to step: ' + step);
       return;
     }
 
@@ -297,7 +296,7 @@ class BrandCompositionApp {
       }
     });
 
-    const panel = document.getElementById(`step-${step}`);
+    const panel = document.getElementById('step-' + step);
     if (panel) panel.classList.add('active');
 
     if (step === 'refine') {
@@ -326,6 +325,7 @@ class BrandCompositionApp {
     return true;
   }
 
+
   /**
    * Phase 4: Use orchestrated pipeline for AI analysis
    */
@@ -345,8 +345,6 @@ class BrandCompositionApp {
         { preset: this.currentPreset }
       );
 
-      // Results are handled by onComplete callback
-      // But store them here as well for direct access
       this.analysis = result.analysis;
       this.placements = result.placements;
       this.typographyComposition = result.typography;
@@ -390,7 +388,6 @@ class BrandCompositionApp {
       else overallDesc.textContent = 'Needs work. Several brand issues to address.';
     }
 
-    // Update checklist items
     this.updateChecklist(score);
   }
 
@@ -399,18 +396,18 @@ class BrandCompositionApp {
     const thresholds = { logo: 80, colors: 70, typography: 75, imagery: 60, layout: 70 };
 
     checks.forEach(check => {
-      const element = document.getElementById(`check-${check}`);
+      const element = document.getElementById('check-' + check);
       if (!element) return;
 
       const threshold = thresholds[check];
       if (score >= threshold + 20) {
-        element.textContent = '✓';
+        element.textContent = '\u2713';
         element.className = 'check-status pass';
       } else if (score >= threshold) {
         element.textContent = '!';
         element.className = 'check-status warning';
       } else {
-        element.textContent = '✕';
+        element.textContent = '\u2715';
         element.className = 'check-status fail';
       }
     });
@@ -434,7 +431,6 @@ class BrandCompositionApp {
    * Phase 4: Export with pre-export validation through orchestration
    */
   async showExportModal() {
-    // Phase 4: Run pre-export validation
     const validation = await this.orchestrationEngine.runPreExportValidation();
 
     if (!validation.canExport) {
@@ -442,25 +438,20 @@ class BrandCompositionApp {
         i.severity === 'critical' || i.severity === 'hard'
       );
 
-      let failMessage = 'Cannot export: The following issues must be resolved:
-
-';
+      let failMessage = 'Cannot export: The following issues must be resolved:\n\n';
       for (const issue of criticalIssues) {
-        failMessage += `• ${issue.category.toUpperCase()}: ${issue.message}
-`;
+        failMessage += '\u2022 ' + issue.category.toUpperCase() + ': ' + issue.message + '\n';
       }
 
       alert(failMessage);
       return;
     }
 
-    // Show warnings if any
     const warnings = validation.issues.filter(i => i.severity === 'warning');
     if (warnings.length > 0) {
       console.warn('Export warnings:', warnings);
     }
 
-    // Proceed with export
     const format = this.stateManager.get('exportFormat') || 'png';
     const dpi = this.stateManager.get('exportDpi') || 300;
     const quality = (this.stateManager.get('exportQuality') || 95) / 100;
@@ -491,7 +482,7 @@ class BrandCompositionApp {
     const details = document.getElementById('export-details');
 
     if (preview) {
-      preview.innerHTML = `<img src="${result.dataUrl}" alt="Export preview" style="max-width: 100%; max-height: 300px; object-fit: contain;">`;
+      preview.innerHTML = '<img src="' + result.dataUrl + '" alt="Export preview" style="max-width: 100%; max-height: 300px; object-fit: contain;">';
     }
 
     if (details) {
@@ -500,32 +491,13 @@ class BrandCompositionApp {
       const quality = this.stateManager.get('exportQuality') || 95;
       const preset = this.currentPreset ? AssetPresets.getPreset(this.currentPreset) : null;
 
-      details.innerHTML = `
-        <div class="export-detail-item">
-          <span class="detail-label">Format</span>
-          <span class="detail-value">${format.toUpperCase()}</span>
-        </div>
-        <div class="export-detail-item">
-          <span class="detail-label">Dimensions</span>
-          <span class="detail-value">${preset ? preset.width + 'x' + preset.height : '1080x1080'}</span>
-        </div>
-        <div class="export-detail-item">
-          <span class="detail-label">DPI</span>
-          <span class="detail-value">${dpi}</span>
-        </div>
-        <div class="export-detail-item">
-          <span class="detail-label">Quality</span>
-          <span class="detail-value">${quality}%</span>
-        </div>
-        <div class="export-detail-item">
-          <span class="detail-label">File Size</span>
-          <span class="detail-value">${this.formatFileSize(result.fileSize || 0)}</span>
-        </div>
-        <div class="export-detail-item">
-          <span class="detail-label">Brand Score</span>
-          <span class="detail-value">${this.stateManager.get('brandScore') || 0}/100</span>
-        </div>
-      `;
+      details.innerHTML = '' +
+        '<div class="export-detail-item"><span class="detail-label">Format</span><span class="detail-value">' + format.toUpperCase() + '</span></div>' +
+        '<div class="export-detail-item"><span class="detail-label">Dimensions</span><span class="detail-value">' + (preset ? preset.width + 'x' + preset.height : '1080x1080') + '</span></div>' +
+        '<div class="export-detail-item"><span class="detail-label">DPI</span><span class="detail-value">' + dpi + '</span></div>' +
+        '<div class="export-detail-item"><span class="detail-label">Quality</span><span class="detail-value">' + quality + '%</span></div>' +
+        '<div class="export-detail-item"><span class="detail-label">File Size</span><span class="detail-value">' + this.formatFileSize(result.fileSize || 0) + '</span></div>' +
+        '<div class="export-detail-item"><span class="detail-label">Brand Score</span><span class="detail-value">' + (this.stateManager.get('brandScore') || 0) + '/100</span></div>';
     }
 
     if (modal) modal.classList.remove('hidden');
@@ -541,7 +513,7 @@ class BrandCompositionApp {
     const format = this.stateManager.get('exportFormat') || 'png';
     const link = document.createElement('a');
     link.href = this.currentExport.dataUrl;
-    link.download = `kpmg-composition-${Date.now()}.${format}`;
+    link.download = 'kpmg-composition-' + Date.now() + '.' + format;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -628,20 +600,18 @@ class BrandCompositionApp {
     let iconSvg = '';
 
     if (aspectRatio > 1.2) {
-      iconSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/></svg>`;
+      iconSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/></svg>';
     } else if (aspectRatio < 0.8) {
-      iconSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="2" width="12" height="20" rx="2"/></svg>`;
+      iconSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="2" width="12" height="20" rx="2"/></svg>';
     } else {
-      iconSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>`;
+      iconSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>';
     }
 
-    return `
-      <div class="preset-card" data-preset="${preset.id}">
-        <div class="preset-icon">${iconSvg}</div>
-        <div class="preset-name">${preset.name}</div>
-        <div class="preset-dims">${preset.ratio || AssetPresets.getAspectRatio(preset)}</div>
-      </div>
-    `;
+    return '<div class="preset-card" data-preset="' + preset.id + '">' +
+      '<div class="preset-icon">' + iconSvg + '</div>' +
+      '<div class="preset-name">' + preset.name + '</div>' +
+      '<div class="preset-dims">' + (preset.ratio || AssetPresets.getAspectRatio(preset)) + '</div>' +
+      '</div>';
   }
 
   selectPreset(presetId) {
@@ -683,11 +653,13 @@ class BrandCompositionApp {
   loadSharedComposition(data) {
     if (data.preset) this.selectPreset(data.preset);
     if (data.headline) {
-      document.getElementById('headline-input').value = data.headline;
+      const headlineInput = document.getElementById('headline-input');
+      if (headlineInput) headlineInput.value = data.headline;
       this.stateManager.set('headline', data.headline);
     }
     if (data.subheading) {
-      document.getElementById('subheading-input').value = data.subheading;
+      const subheadingInput = document.getElementById('subheading-input');
+      if (subheadingInput) subheadingInput.value = data.subheading;
       this.stateManager.set('subheading', data.subheading);
     }
     if (data.backgroundImage) {
@@ -710,7 +682,7 @@ class BrandCompositionApp {
             preview.className = 'upload-preview';
             uploadCard.appendChild(preview);
           }
-          preview.innerHTML = `<img src="${src}" alt="Preview" style="width: 100%; height: 100%; object-fit: cover;">`;
+          preview.innerHTML = '<img src="' + src + '" alt="Preview" style="width: 100%; height: 100%; object-fit: cover;">';
         }
         resolve(img);
       };
@@ -732,20 +704,20 @@ class BrandCompositionApp {
 
   // Performance
   getPerformanceReport() {
-    return this.performanceMonitor?.getReport() || null;
+    return this.performanceMonitor ? this.performanceMonitor.getReport() : null;
   }
 
   togglePerformanceOverlay(show) {
-    this.performanceMonitor?.toggleOverlay(show);
+    if (this.performanceMonitor) this.performanceMonitor.toggleOverlay(show);
   }
 
   // Cleanup
   destroy() {
-    this.orchestrationEngine?.destroy();
-    this.performanceMonitor?.destroy();
-    this.objectPool?.destroy();
-    this.canvasManager?.destroy();
-    this.stateManager?.persist();
+    if (this.orchestrationEngine) this.orchestrationEngine.destroy();
+    if (this.performanceMonitor) this.performanceMonitor.destroy();
+    if (this.objectPool) this.objectPool.destroy();
+    if (this.canvasManager) this.canvasManager.destroy();
+    this.stateManager.persist();
   }
 }
 

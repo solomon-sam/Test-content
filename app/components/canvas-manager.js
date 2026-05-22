@@ -2,6 +2,7 @@
  * Canvas Manager
  * Fabric.js canvas setup, object creation, and layer management
  * FIXED: Uses KPMG logo SVG, treatment opacity clamped, gradient map support
+ * ADDED: Methods required by app.js (setGridSystem, resizeCanvas, getCanvasState, setCanvasState, requestRender)
  */
 
 class CanvasManager {
@@ -52,6 +53,65 @@ class CanvasManager {
         this.canvas.discardActiveObject();
       }
     });
+  }
+
+  /**
+   * NEW: Set/update the grid system (called by app.js when preset changes)
+   */
+  setGridSystem(gridSystem) {
+    this.gridSystem = gridSystem;
+    if (this.gridSystem) {
+      this.canvas.setWidth(this.gridSystem.canvasWidth);
+      this.canvas.setHeight(this.gridSystem.canvasHeight);
+    }
+  }
+
+  /**
+   * NEW: Resize canvas to current grid dimensions (called by app.js on window resize)
+   */
+  resizeCanvas() {
+    if (this.gridSystem) {
+      this.canvas.setWidth(this.gridSystem.canvasWidth);
+      this.canvas.setHeight(this.gridSystem.canvasHeight);
+      this.canvas.renderAll();
+    }
+  }
+
+  /**
+   * NEW: Request a render (called by app.js for performance tracking)
+   */
+  requestRender() {
+    this.canvas.renderAll();
+  }
+
+  /**
+   * NEW: Get current canvas state for undo/redo (called by app.js)
+   */
+  getCanvasState() {
+    return {
+      objects: this.canvas.toJSON(),
+      width: this.canvas.width,
+      height: this.canvas.height,
+      gridInfo: this.gridSystem ? this.gridSystem.getInfo() : null
+    };
+  }
+
+  /**
+   * NEW: Restore canvas state for undo/redo (called by app.js)
+   */
+  setCanvasState(state) {
+    if (!state) return;
+
+    if (state.objects) {
+      this.canvas.loadFromJSON(state.objects, () => {
+        this.canvas.renderAll();
+      });
+    }
+
+    if (state.width && state.height) {
+      this.canvas.setWidth(state.width);
+      this.canvas.setHeight(state.height);
+    }
   }
 
   /**

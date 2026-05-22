@@ -1,8 +1,8 @@
 /* ============================================
-   KPMG BRAND COMPOSITION ENGINE
-   Phase 1: Foundation & Infrastructure Styles
-   Light, airy KPMG brand theme
-   ============================================ */
+ KPMG BRAND COMPOSITION ENGINE
+ Combined Styles — Phase 1 Foundation + Phase 4 Additions
+ Light, airy KPMG brand theme
+ ============================================ */
 
 /* CSS Variables */
 :root {
@@ -82,8 +82,8 @@ html, body {
 }
 
 /* ============================================
-   APP LAYOUT
-   ============================================ */
+ APP LAYOUT
+ ============================================ */
 
 #app {
   display: flex;
@@ -100,8 +100,8 @@ html, body {
 }
 
 /* ============================================
-   HEADER / STEP NAVIGATION
-   ============================================ */
+ HEADER / STEP NAVIGATION
+ ============================================ */
 
 .app-header {
   height: var(--header-height);
@@ -254,8 +254,8 @@ html, body {
 }
 
 /* ============================================
-   STEP PANELS
-   ============================================ */
+ STEP PANELS
+ ============================================ */
 
 .step-panel {
   display: none;
@@ -305,8 +305,8 @@ html, body {
 }
 
 /* ============================================
-   STEP 1: EXPLORE
-   ============================================ */
+ STEP 1: EXPLORE
+ ============================================ */
 
 .explore-layout {
   display: flex;
@@ -501,8 +501,8 @@ html, body {
 }
 
 /* ============================================
-   BUTTONS
-   ============================================ */
+ BUTTONS
+ ============================================ */
 
 .btn {
   padding: 10px 20px;
@@ -577,8 +577,8 @@ html, body {
 }
 
 /* ============================================
-   STEP 2: COMPOSE (Dimensions)
-   ============================================ */
+ STEP 2: COMPOSE (Dimensions)
+ ============================================ */
 
 .compose-layout {
   flex: 1;
@@ -696,8 +696,8 @@ html, body {
 }
 
 /* ============================================
-   STEP 3: REFINE
-   ============================================ */
+ STEP 3: REFINE
+ ============================================ */
 
 .refine-layout {
   display: flex;
@@ -725,7 +725,7 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: 
+  background:
     linear-gradient(45deg, #EEF2F7 25%, transparent 25%),
     linear-gradient(-45deg, #EEF2F7 25%, transparent 25%),
     linear-gradient(45deg, transparent 75%, #EEF2F7 75%),
@@ -982,8 +982,8 @@ html, body {
 }
 
 /* ============================================
-   STEP 4: EXPORT
-   ============================================ */
+ STEP 4: EXPORT
+ ============================================ */
 
 .export-layout {
   display: flex;
@@ -1211,8 +1211,8 @@ html, body {
 }
 
 /* ============================================
-   LOADING OVERLAY
-   ============================================ */
+ LOADING OVERLAY
+ ============================================ */
 
 .loading-overlay {
   position: fixed;
@@ -1278,8 +1278,8 @@ html, body {
 }
 
 /* ============================================
-   MODAL
-   ============================================ */
+ MODAL
+ ============================================ */
 
 .modal {
   position: fixed;
@@ -1392,8 +1392,8 @@ html, body {
 }
 
 /* ============================================
-   CONTEXTUAL TOOLTIP
-   ============================================ */
+ CONTEXTUAL TOOLTIP
+ ============================================ */
 
 .contextual-tooltip {
   position: fixed;
@@ -1476,8 +1476,8 @@ html, body {
 }
 
 /* ============================================
-   COLOR PICKER POPUP
-   ============================================ */
+ COLOR PICKER POPUP
+ ============================================ */
 
 .color-picker-popup {
   position: fixed;
@@ -1634,8 +1634,8 @@ html, body {
 }
 
 /* ============================================
-   UTILITY CLASSES
-   ============================================ */
+ UTILITY CLASSES
+ ============================================ */
 
 .hidden { display: none !important; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
@@ -1684,10 +1684,9 @@ html, body {
   }
 }
 
-
 /* ============================================
-   ACCESSIBILITY OVERLAYS
-   ============================================ */
+ ACCESSIBILITY OVERLAYS (Phase 2-3)
+ ============================================ */
 
 .heatmap-legend {
   position: absolute;
@@ -1882,4 +1881,129 @@ html, body {
 
 .accessibility-metric-value.fail {
   color: #dc2626;
+}
+
+/* ============================================
+ PHASE 4: PERFORMANCE MONITOR OVERLAY
+ ============================================ */
+
+#perf-monitor-overlay {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  background: rgba(0, 0, 0, 0.75);
+  color: #00ff88;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 10px 14px;
+  border-radius: 6px;
+  z-index: 9999;
+  pointer-events: none;
+  line-height: 1.6;
+  min-width: 180px;
+  backdrop-filter: blur(4px);
+}
+
+#perf-monitor-overlay div:first-child {
+  font-weight: bold;
+  margin-bottom: 4px;
+  color: #fff;
+}
+
+/* ============================================
+ PHASE 4: CONSTRAINT VIOLATION FEEDBACK
+ ============================================ */
+
+.constraint-violation-glow {
+  filter: drop-shadow(0 0 8px rgba(239, 68, 68, 0.5));
+}
+
+.constraint-warning-glow {
+  filter: drop-shadow(0 0 6px rgba(245, 158, 11, 0.4));
+}
+
+/* ============================================
+ PHASE 4: EXPORT GATE STATUS
+ ============================================ */
+
+.export-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.export-status-badge.pass {
+  background: #E8F5E9;
+  color: #2E7D32;
+}
+
+.export-status-badge.warning {
+  background: #FFF3E0;
+  color: #EF6C00;
+}
+
+.export-status-badge.fail {
+  background: #FFEBEE;
+  color: #C62828;
+}
+
+/* Disabled button states for export gate */
+.btn-primary.disabled,
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+.btn-primary.disabled:hover,
+.btn-primary:disabled:hover {
+  background: var(--kpmg-blue);
+  border-color: var(--kpmg-blue);
+}
+
+/* ============================================
+ PHASE 4: PIPELINE STAGE INDICATOR
+ ============================================ */
+
+.pipeline-stage-indicator {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-xl);
+  padding: 8px 20px;
+  box-shadow: var(--shadow-md);
+  z-index: 150;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.pipeline-stage-name {
+  font-weight: 600;
+  color: var(--kpmg-blue);
+}
+
+.pipeline-progress-bar {
+  width: 100px;
+  height: 3px;
+  background: var(--border-secondary);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.pipeline-progress-fill {
+  height: 100%;
+  background: var(--kpmg-blue);
+  border-radius: 2px;
+  transition: width 0.3s;
 }

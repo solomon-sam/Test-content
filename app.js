@@ -1,7 +1,7 @@
 /**
  * KPMG Brand Composition Engine
- * Main Application Controller - Phase 2
- * 4-step wizard with Typography Intelligence & Accessibility
+ * Main Application Controller — Phase 3 (Complete)
+ * 4-step wizard with Compliance Checklist & Manual Editing
  */
 
 class BrandCompositionApp {
@@ -24,6 +24,10 @@ class BrandCompositionApp {
     this.layersPanel = null;
     this.contextualTooltip = null;
 
+    // Phase 3: NEW engines
+    this.complianceEngine = null;
+    this.constraintEngine = null;
+
     // State
     this.currentPreset = null;
     this.analysis = null;
@@ -39,6 +43,10 @@ class BrandCompositionApp {
       date: new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
       cta: ''
     };
+
+    // Live validation loop
+    this.validationLoopId = null;
+    this.lastValidationTime = 0;
 
     this.init();
   }
@@ -95,13 +103,32 @@ class BrandCompositionApp {
     // Initialize orchestration
     this.orchestrationEngine = new OrchestrationEngine(this.canvasManager, this.gridSystem);
 
+    // ═══════════════════════════════════════════════════════════════
+    // PHASE 3: Initialize Compliance Engine & Constraint Engine
+    // ═══════════════════════════════════════════════════════════════
+    this.showLoading('Initializing compliance engine...', 75);
+
+    this.complianceEngine = new ComplianceEngine(
+      this.stateManager,
+      this.canvasManager,
+      this.gridSystem
+    );
+
+    this.constraintEngine = new ConstraintEngine(this.gridSystem);
+
     this.showLoading('Setting up interaction systems...', 80);
 
     // Initialize interaction manager
     this.interactionManager = new InteractionManager(this.canvasManager, this.stateManager);
 
-    // Initialize edit mode controller
-    this.editModeController = new EditModeController(this.canvasManager, this.stateManager, this.interactionManager);
+    // Initialize edit mode controller with Phase 3 dependencies
+    this.editModeController = new EditModeController(
+      this.canvasManager,
+      this.stateManager,
+      this.interactionManager,
+      this.complianceEngine,
+      this.constraintEngine
+    );
 
     // Initialize color picker
     this.colorPicker = new ColorPicker(this.stateManager, this.canvasManager);
@@ -121,6 +148,12 @@ class BrandCompositionApp {
     // Setup typography auto-generation on text input
     this.setupTypographyAutoGeneration();
 
+    // Setup compliance subscriptions
+    this.setupComplianceSubscriptions();
+
+    // Setup live validation loop
+    this.setupLiveValidationLoop();
+
     // Fit canvas to screen
     setTimeout(() => {
       this.canvasManager.fitToScreen();
@@ -135,6 +168,127 @@ class BrandCompositionApp {
         this.onPresetSelected(preset);
       }
     });
+  }
+
+  /**
+   * Setup compliance engine subscriptions for real-time UI updates
+   */
+  setupComplianceSubscriptions() {
+    // Update brand score from compliance report
+    this.stateManager.subscribe('complianceReport', (report) => {
+      if (report && report.score !== undefined) {
+        this.stateManager.set('brandScore', report.score);
+      }
+    });
+
+    // Update export button state based on compliance
+    this.stateManager.subscribe('complianceStatus', (status) => {
+      this.updateExportGate(status);
+    });
+
+    // Update checklist status from compliance
+    this.stateManager.subscribe('checklistStatus', (status) => {
+      if (this.uiControls) {
+        this.uiControls.updateChecklist(status);
+      }
+    });
+  }
+
+  /**
+   * Setup live validation loop (60fps during manual editing)
+   */
+  setupLiveValidationLoop() {
+    const loop = () => {
+      const now = performance.now();
+
+      // Run validation every 100ms during active editing
+      if (this.editModeController.mode === 'manual' &&
+          this.editModeController.dragState.isDragging &&
+          now - this.lastValidationTime > 100) {
+        this.lastValidationTime = now;
+
+        // Quick validation (not full compliance)
+        this.runQuickValidation();
+      }
+
+      this.validationLoopId = requestAnimationFrame(loop);
+    };
+
+    this.validationLoopId = requestAnimationFrame(loop);
+  }
+
+  /**
+   * Quick validation during drag (lightweight, 60fps friendly)
+   */
+  runQuickValidation() {
+    if (!this.complianceEngine) return;
+
+    // Only validate changed elements
+    const element = this.editModeController.selectedElement;
+    if (element && element.name) {
+      const result = this.complianceEngine.validate(element.name, this.stateManager.state);
+      if (result && result.status === 'FAIL') {
+        // Show immediate visual feedback
+        this.showConstraintFeedback(element, result.issues);
+      }
+    }
+  }
+
+  /**
+   * Show constraint violation feedback on element
+   */
+  showConstraintFeedback(element, issues) {
+    const hasCritical = issues.some(i => i.severity === 'critical' || i.severity === 'hard');
+
+    if (hasCritical) {
+      // Red glow for hard violations
+      element.set('shadow', new fabric.Shadow({
+        color: 'rgba(239, 68, 68, 0.4)',
+        blur: 15,
+        offsetX: 0,
+        offsetY: 0
+      }));
+    } else {
+      // Amber glow for warnings
+      element.set('shadow', new fabric.Shadow({
+        color: 'rgba(245, 158, 11, 0.3)',
+        blur: 10,
+        offsetX: 0,
+        offsetY: 0
+      }));
+    }
+
+    this.canvasManager.requestRender();
+  }
+
+  /**
+   * Update export button based on compliance status
+   */
+  updateExportGate(status) {
+    const exportBtn = document.getElementById('btn-export');
+    const refineContinue = document.getElementById('btn-continue-refine');
+
+    if (exportBtn) {
+      if (status === 'FAIL') {
+        exportBtn.disabled = true;
+        exportBtn.classList.add('disabled');
+        exportBtn.title = 'Fix compliance issues before exporting';
+      } else {
+        exportBtn.disabled = false;
+        exportBtn.classList.remove('disabled');
+        exportBtn.title = '';
+      }
+    }
+
+    if (refineContinue) {
+      if (status === 'FAIL') {
+        refineContinue.disabled = true;
+        refineContinue.classList.add('disabled');
+      } else {
+        refineContinue.disabled = false;
+        refineContinue.classList.remove('disabled');
+      }
+    }
   }
 
   /**
@@ -172,12 +326,9 @@ class BrandCompositionApp {
         // Run accessibility check
         this.runAccessibilityCheck();
 
-        // Update brand score
-        if (this.typographyComposition.score) {
-          const currentScore = this.stateManager.get('brandScore') || 0;
-          const typographyScore = this.typographyComposition.score;
-          const newScore = Math.round((currentScore * 0.6) + (typographyScore * 0.4));
-          this.stateManager.set('brandScore', Math.min(100, newScore));
+        // Update brand score from compliance
+        if (this.complianceEngine) {
+          this.complianceEngine.validateAll();
         }
       }
     };
@@ -217,19 +368,18 @@ class BrandCompositionApp {
     const checklist = this.stateManager.get('checklistStatus') || {};
 
     if (result.wcag.aa) {
-      checklist.typography = 'pass';
+      checklist.accessibility = 'pass';
     } else if (result.wcag.aa) {
-      checklist.typography = 'warning';
+      checklist.accessibility = 'warning';
     } else {
-      checklist.typography = 'fail';
+      checklist.accessibility = 'fail';
     }
 
     this.stateManager.set('checklistStatus', checklist);
 
     // Apply auto-corrections if enabled
     if (result.corrections && result.corrections.length > 0) {
-      // Only apply non-destructive corrections automatically
-      const safeCorrections = result.corrections.filter(c => 
+      const safeCorrections = result.corrections.filter(c =>
         c.strategy === 'contrast' || c.strategy === 'size'
       );
 
@@ -309,6 +459,11 @@ class BrandCompositionApp {
         this.typographyRenderer.render(this.typographyComposition, this.gridSystem);
       }
     }
+
+    // Re-run compliance validation for new dimensions
+    if (this.complianceEngine) {
+      setTimeout(() => this.complianceEngine.validateAll(), 100);
+    }
   }
 
   /**
@@ -321,8 +476,25 @@ class BrandCompositionApp {
     this.canvasManager.drawGrid();
     this.canvasManager.fitToScreen();
 
-    // Update typography engine with new grid
+    // Update engines with new grid
     this.typographyEngine = new TypographyCompositionEngine(this.gridSystem, this.stateManager);
+
+    // Update constraint engine
+    if (this.constraintEngine) {
+      this.constraintEngine.setGridSystem(this.gridSystem);
+    }
+
+    // Update compliance engine
+    if (this.complianceEngine) {
+      // Re-initialize with new grid
+      this.complianceEngine.gridSystem = this.gridSystem;
+      this.complianceEngine.checklists.grid.gridSystem = this.gridSystem;
+      this.complianceEngine.checklists.logo.gridSystem = this.gridSystem;
+      this.complianceEngine.checklists.typography.gridSystem = this.gridSystem;
+      this.complianceEngine.checklists.motif.gridSystem = this.gridSystem;
+      this.complianceEngine.checklists.swoosh.gridSystem = this.gridSystem;
+      this.complianceEngine.checklists.composition.gridSystem = this.gridSystem;
+    }
   }
 
   /**
@@ -384,6 +556,17 @@ class BrandCompositionApp {
       }
 
       this.placeBrandElements();
+
+      // ═══════════════════════════════════════════════════════════════
+      // PHASE 3: Run compliance validation after composition
+      // ═══════════════════════════════════════════════════════════════
+      this.stateManager.set('loadingPercent', 95);
+      this.stateManager.set('loadingText', 'Validating brand compliance...');
+
+      if (this.complianceEngine) {
+        this.complianceEngine.validateAll();
+      }
+
       this.calculateBrandScore();
       this.runAccessibilityCheck();
 
@@ -455,10 +638,10 @@ class BrandCompositionApp {
 
     if (analysis && analysis.saliency) {
       const focal = analysis.saliency.focalPoint;
-      x = Math.max(grid.margin + grid.cellWidth * 2, 
-          Math.min(focal.x - w/2, grid.canvasWidth - grid.margin - w - grid.cellWidth * 2));
+      x = Math.max(grid.margin + grid.cellWidth * 2,
+        Math.min(focal.x - w/2, grid.canvasWidth - grid.margin - w - grid.cellWidth * 2));
       y = Math.max(grid.margin + grid.cellHeight * 2,
-          Math.min(focal.y - h/2, grid.canvasHeight - grid.margin - h - grid.cellHeight * 3));
+        Math.min(focal.y - h/2, grid.canvasHeight - grid.margin - h - grid.cellHeight * 3));
     }
 
     const snapped = grid.snapToGrid(x, y, w, h);
@@ -515,9 +698,19 @@ class BrandCompositionApp {
   }
 
   /**
-   * Calculate brand score
+   * Calculate brand score using compliance engine
    */
   calculateBrandScore() {
+    // Phase 3: Use compliance engine score if available
+    if (this.complianceEngine) {
+      const report = this.complianceEngine.getReport();
+      if (report && report.score !== undefined) {
+        this.stateManager.set('brandScore', report.score);
+        return;
+      }
+    }
+
+    // Fallback to manual calculation
     let score = 0;
     const checklist = {
       logo: 'pending',
@@ -531,8 +724,8 @@ class BrandCompositionApp {
     if (this.logoImage && this.placements && this.placements.logo) {
       const logoZone = this.gridSystem.getLogoZone();
       const placement = this.placements.logo;
-      const logoOk = Math.abs(placement.x - logoZone.x) < 50 && 
-                     Math.abs(placement.y - logoZone.y) < 50;
+      const logoOk = Math.abs(placement.x - logoZone.x) < 50 &&
+        Math.abs(placement.y - logoZone.y) < 50;
       checklist.logo = logoOk ? 'pass' : 'warning';
       score += logoOk ? 20 : 10;
     } else {
@@ -597,9 +790,28 @@ class BrandCompositionApp {
   }
 
   /**
-   * Show export modal
+   * Show export modal with compliance gate check
    */
   async showExportModal() {
+    // Phase 3: Export gate enforcement
+    if (this.complianceEngine && !this.complianceEngine.canExport()) {
+      const report = this.complianceEngine.getReport();
+      const criticalIssues = report ? report.categories : {};
+      let failMessage = 'Cannot export: The following issues must be resolved:
+
+';
+
+      for (const [cat, result] of Object.entries(criticalIssues)) {
+        if (result.status === 'FAIL') {
+          failMessage += `• ${cat.toUpperCase()}: ${result.issues[0]?.message || 'Failed'}
+`;
+        }
+      }
+
+      alert(failMessage);
+      return;
+    }
+
     const format = this.stateManager.get('exportFormat') || 'png';
     const dpi = this.stateManager.get('exportDpi') || 300;
     const quality = (this.stateManager.get('exportQuality') || 95) / 100;
@@ -649,6 +861,12 @@ class BrandCompositionApp {
       this.typographyComposition = null;
       this.logoImage = null;
       this.backgroundImage = null;
+
+      // Reset compliance
+      if (this.complianceEngine) {
+        this.complianceEngine.status = 'PASS';
+        this.complianceEngine.lastReport = null;
+      }
 
       document.querySelectorAll('.preset-card').forEach(i => i.classList.remove('active'));
       document.getElementById('upload-image-zone')?.classList.remove('has-file');

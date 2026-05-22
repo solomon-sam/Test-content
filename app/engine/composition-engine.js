@@ -1,6 +1,7 @@
 /**
  * Composition Engine
  * Auto-composition of brand elements with KPMG brand rules
+ * FIXED: Logo now strictly locked to top-left per brand guidelines
  */
 
 class CompositionEngine {
@@ -14,6 +15,7 @@ class CompositionEngine {
     const grid = this.gridSystem;
 
     // Logo placement (TOP-LEFT, LOCKED per KPMG rules)
+    // BRAND RULE: Logo is always at top-left, never moves based on saliency
     const logoZone = grid.getLogoZone();
     placements.logo = {
       x: logoZone.x,
@@ -49,36 +51,15 @@ class CompositionEngine {
     return placements;
   }
 
-  calculateOptimalLogoPosition(analysis) {
-    const zones = this.gridSystem.getLogoZones();
+  /**
+   * REMOVED: calculateOptimalLogoPosition
+   * KPMG brand rule: Logo is ALWAYS top-left, locked, never moves.
+   * No saliency-based positioning allowed.
+   */
 
-    if (!analysis || !analysis.saliency) {
-      return zones[0]; // Default top-left
-    }
-
-    const focal = analysis.saliency.focalPoint;
-    let bestZone = zones[0];
-    let maxDistance = 0;
-
-    zones.forEach(zone => {
-      const zoneCenter = {
-        x: zone.x + zone.width / 2,
-        y: zone.y + zone.height / 2
-      };
-      const distance = Math.sqrt(
-        (zoneCenter.x - focal.x) ** 2 +
-        (zoneCenter.y - focal.y) ** 2
-      );
-
-      if (distance > maxDistance) {
-        maxDistance = distance;
-        bestZone = zone;
-      }
-    });
-
-    return bestZone;
-  }
-
+  /**
+   * Calculate optimal text position based on negative space analysis
+   */
   calculateOptimalTextPosition(analysis, logoPosition) {
     const zones = this.gridSystem.getTextZones();
 
@@ -92,18 +73,19 @@ class CompositionEngine {
     }
 
     // Find region with best score that doesn't overlap with logo
-    const logoRect = {
+    // BRAND RULE: Logo safe zone is 2 grid units
+    const logoSafe = {
       x: logoPosition.x,
       y: logoPosition.y,
-      width: logoPosition.width * 3,
-      height: logoPosition.height * 3
+      width: logoPosition.width + this.gridSystem.cellWidth * 2,
+      height: logoPosition.height + this.gridSystem.cellHeight * 2
     };
 
     let bestRegion = regions[0];
     let bestScore = 0;
 
     regions.forEach(region => {
-      const overlap = this.calculateOverlap(region, logoRect);
+      const overlap = this.calculateOverlap(region, logoSafe);
       const score = region.score * (1 - overlap);
 
       if (score > bestScore) {
@@ -120,6 +102,10 @@ class CompositionEngine {
     };
   }
 
+  /**
+   * Calculate optimal motif position
+   * Respects logo safe zone (2 grid units) and maintains 7:10 or 10:7 ratio
+   */
   calculateOptimalMotifPosition(analysis, logoPosition, textPosition) {
     if (!analysis || !analysis.saliency) {
       const grid = this.gridSystem;
@@ -135,17 +121,27 @@ class CompositionEngine {
     const grid = this.gridSystem;
 
     // Motif should be near focal point but respecting safe zones
-    const motifWidth = grid.cellWidth * 5;
-    const motifHeight = motifWidth * (7/10); // Portrait ratio
+    // BRAND RULE: Motif must NOT overlap logo zone (2 grid unit safety)
+    const motifWidth = grid.cellWidth * 6;
+    const motifHeight = motifWidth * (7/10); // Portrait ratio default
 
     let x = focal.x - motifWidth / 2;
     let y = focal.y - motifHeight / 2;
 
-    // Keep in safe margins
-    x = Math.max(grid.margin + grid.cellWidth, 
-        Math.min(x, grid.canvasWidth - grid.margin - motifWidth - grid.cellWidth));
+    // Keep in safe margins (1 grid unit from edge per brand rules)
+    x = Math.max(grid.margin + grid.cellWidth,
+      Math.min(x, grid.canvasWidth - grid.margin - motifWidth - grid.cellWidth));
     y = Math.max(grid.margin + grid.cellHeight * 2,
-        Math.min(y, grid.canvasHeight - grid.margin - motifHeight - grid.cellHeight * 3));
+      Math.min(y, grid.canvasHeight - grid.margin - motifHeight - grid.cellHeight * 3));
+
+    // Ensure no overlap with logo safe zone (2 grid units)
+    const logoSafeRight = grid.margin + grid.cellWidth * 2 + grid.cellWidth * 2; // logo width + 2 grid safety
+    const logoSafeBottom = grid.margin + grid.cellHeight + grid.cellHeight * 2; // logo height + 2 grid safety
+
+    if (x < logoSafeRight && y < logoSafeBottom) {
+      // Push motif to the right of logo safe zone
+      x = logoSafeRight + grid.cellWidth;
+    }
 
     return { x, y, width: motifWidth, height: motifHeight };
   }

@@ -2,6 +2,7 @@
  * Typography Composition Engine
  * Intelligent auto-typography from 2 inputs
  * Semantic tokenization, optical balancing, editorial line grouping, line offsets
+ * FIXED: Baseline grid snap enforced during composition
  */
 
 class TypographyCompositionEngine {
@@ -56,7 +57,7 @@ class TypographyCompositionEngine {
     const headline = this.composeHeadline(groupings, motif, imageAnalysis);
 
     // Compose subheading
-    const subheading = subheadingText ? 
+    const subheading = subheadingText ?
       this.composeSubheading(subheadingText, headline, motif) : null;
 
     // Compose metadata
@@ -65,6 +66,9 @@ class TypographyCompositionEngine {
     // Calculate line offsets for editorial stagger
     const offsets = this.calculateLineOffsets(headline.lines, motif, imageAnalysis);
     headline.lines = this.applyOffsets(headline.lines, offsets);
+
+    // NEW: Snap all text positions to baseline grid
+    this.snapToBaselineGrid(headline, subheading);
 
     // Validate and score
     const validation = this.validateComposition({ headline, subheading, metadata }, motif);
@@ -79,6 +83,44 @@ class TypographyCompositionEngine {
       tokens,
       groupings
     };
+  }
+
+  /**
+   * NEW: Snap all text element positions to baseline grid
+   * KPMG brand rule: All text baselines snap to baselineUnit intervals (cellHeight/4)
+   */
+  snapToBaselineGrid(headline, subheading) {
+    const grid = this.gridSystem;
+    if (!grid) return;
+
+    // Snap headline line positions
+    if (headline && headline.lines) {
+      let currentY = headline.lines[0]?.y || grid.margin + grid.cellHeight * 3;
+      headline.lines.forEach((line, i) => {
+        if (i === 0) {
+          line.y = grid.snapToBaseline(currentY);
+        } else {
+          // Snap each line's Y to baseline grid, maintaining line height
+          const rawY = currentY + (headline.lines[i-1].height || headline.fontSize * headline.lineHeight);
+          line.y = grid.snapToBaseline(rawY);
+        }
+        currentY = line.y;
+      });
+    }
+
+    // Snap subheading position
+    if (subheading && subheading.lines) {
+      let currentY = subheading.lines[0]?.y || grid.margin + grid.cellHeight * 3;
+      subheading.lines.forEach((line, i) => {
+        if (i === 0) {
+          line.y = grid.snapToBaseline(currentY);
+        } else {
+          const rawY = currentY + (subheading.lines[i-1].height || subheading.fontSize * subheading.lineHeight);
+          line.y = grid.snapToBaseline(rawY);
+        }
+        currentY = line.y;
+      });
+    }
   }
 
   /**
@@ -110,7 +152,7 @@ class TypographyCompositionEngine {
       currentGroup.push(token);
 
       // Break group at punctuation or natural pause points
-      const shouldBreak = 
+      const shouldBreak =
         token.isPunctuation ||
         (i < tokens.length - 1 && tokens[i + 1].isCapitalized && currentGroup.length >= 2) ||
         currentGroup.length >= 4 ||
@@ -146,7 +188,7 @@ class TypographyCompositionEngine {
 
     words.forEach((word, i) => {
       const wordWidth = this.calculateOpticalWidth(word.text, this.fonts.headline.baseSize);
-      const spaceWidth = currentLine.length > 0 ? 
+      const spaceWidth = currentLine.length > 0 ?
         this.calculateOpticalWidth(' ', this.fonts.headline.baseSize) : 0;
 
       if (currentWidth + spaceWidth + wordWidth > maxWidth && currentLine.length > 0) {
@@ -203,7 +245,8 @@ class TypographyCompositionEngine {
     const grid = this.gridSystem;
     const maxWidth = this.getSubheadingMaxWidth(motif, headline);
 
-    const fontSize = Math.max(14, Math.min(24, headline.fontSize * 0.5));
+    // FIXED: Subheading should be noticeably smaller than headline (0.5x or less)
+    const fontSize = Math.max(14, Math.min(22, headline.fontSize * 0.5));
 
     // Simple line break for subheading (no stagger)
     const words = text.trim().split(/\s+/);
@@ -213,7 +256,7 @@ class TypographyCompositionEngine {
 
     words.forEach(word => {
       const wordWidth = this.calculateOpticalWidth(word, fontSize);
-      const spaceWidth = currentLine.length > 0 ? 
+      const spaceWidth = currentLine.length > 0 ?
         this.calculateOpticalWidth(' ', fontSize) : 0;
 
       if (currentWidth + spaceWidth + wordWidth > maxWidth && currentLine.length > 0) {
@@ -455,6 +498,15 @@ class TypographyCompositionEngine {
       issues.push('Line offsets exceed 3 grid units');
     }
 
+    // NEW: Check baseline alignment
+    const baselineAligned = comp.headline.lines.every(line => {
+      const snappedY = grid.snapToBaseline(line.y);
+      return Math.abs(line.y - snappedY) < 1;
+    });
+    if (!baselineAligned) {
+      issues.push('Headline lines are not aligned to baseline grid');
+    }
+
     return {
       valid: issues.length === 0,
       issues
@@ -492,6 +544,13 @@ class TypographyCompositionEngine {
     if (comp.subheading && comp.subheading.fontSize < comp.headline.fontSize * 0.6) {
       score += 20;
     }
+
+    // Baseline alignment score
+    const baselineAligned = comp.headline.lines.every(line => {
+      const snappedY = grid.snapToBaseline(line.y);
+      return Math.abs(line.y - snappedY) < 1;
+    });
+    if (baselineAligned) score += 10;
 
     return Math.min(100, score);
   }

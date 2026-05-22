@@ -1,8 +1,14 @@
 /**
- * Compliance Engine — Phase 3A
+ * Compliance Engine — Phase 3A (FIXED)
  * Global Brand Compliance Checklist Engine
  * 10-category validation authority with real-time status,
  * export gate enforcement, and detailed reporting.
+ * 
+ * FIXES:
+ * - Motif minimum size: 20% (was 15%)
+ * - Swoosh angle: horizontal-only (0°) enforcement
+ * - Metadata spacing: 2-grid-unit check
+ * - Motif edge margin: 1 grid unit from canvas edge
  */
 
 class ComplianceEngine {
@@ -289,6 +295,21 @@ class LogoChecklist {
       });
     }
 
+    // Check logo size matches 2x1 grid units
+    if (grid) {
+      const expectedWidth = grid.cellWidth * 2;
+      const expectedHeight = grid.cellHeight * 1;
+      const widthDrift = Math.abs((logo.width * logo.scaleX) - expectedWidth) / expectedWidth;
+      const heightDrift = Math.abs((logo.height * logo.scaleY) - expectedHeight) / expectedHeight;
+
+      if (widthDrift > 0.15 || heightDrift > 0.15) {
+        issues.push({
+          message: `Logo size (${Math.round(logo.width * logo.scaleX)}x${Math.round(logo.height * logo.scaleY)}) does not match expected 2x1 grid units (${Math.round(expectedWidth)}x${Math.round(expectedHeight)})`,
+          severity: 'warning'
+        });
+      }
+    }
+
     // Check logo contrast against background
     const treatment = canvasManager.objects.treatment;
     if (treatment) {
@@ -301,7 +322,7 @@ class LogoChecklist {
 
     return {
       status: issues.some(i => i.severity === 'critical') ? 'FAIL' :
-              issues.some(i => i.severity === 'warning') ? 'WARNING' : 'PASS',
+        issues.some(i => i.severity === 'warning') ? 'WARNING' : 'PASS',
       issues
     };
   }
@@ -365,9 +386,17 @@ class TypographyChecklist {
       }
     }
 
+    // Check baseline alignment
+    if (headline && grid) {
+      const snappedY = grid.snapToBaseline(headline.top);
+      if (Math.abs(headline.top - snappedY) > 2) {
+        issues.push({ message: 'Headline is not aligned to baseline grid', severity: 'info', element: 'headline' });
+      }
+    }
+
     return {
       status: issues.some(i => i.severity === 'critical') ? 'FAIL' :
-              issues.some(i => i.severity === 'warning') ? 'WARNING' : 'PASS',
+        issues.some(i => i.severity === 'warning') ? 'WARNING' : 'PASS',
       issues
     };
   }
@@ -402,12 +431,12 @@ class MotifChecklist {
       });
     }
 
-    // Check minimum size (20% of canvas area)
+    // Check minimum size (20% of canvas area) - FIXED from 15%
     const canvasArea = grid ? grid.canvasWidth * grid.canvasHeight : 1;
     const motifArea = w * h;
-    if (motifArea < canvasArea * 0.15) {
+    if (motifArea < canvasArea * 0.20) {
       issues.push({
-        message: 'Motif is smaller than recommended 20% of canvas',
+        message: 'Motif is smaller than required 20% of canvas',
         severity: 'warning',
         element: 'motif'
       });
@@ -417,7 +446,7 @@ class MotifChecklist {
     const logoZone = grid ? grid.getLogoZone() : null;
     if (logoZone) {
       const overlap = !(motif.left + w < logoZone.x || motif.left > logoZone.x + logoZone.width ||
-                      motif.top + h < logoZone.y || motif.top > logoZone.y + logoZone.height);
+          motif.top + h < logoZone.y || motif.top > logoZone.y + logoZone.height);
       if (overlap) {
         issues.push({ message: 'Motif overlaps logo safe zone', severity: 'critical', element: 'motif' });
       }
@@ -432,9 +461,18 @@ class MotifChecklist {
       }
     }
 
+    // NEW: Check motif respects 1-grid-unit margin from canvas edge
+    if (grid && !grid.isMotifEdgeSafe(motif.left, motif.top, w, h)) {
+      issues.push({
+        message: 'Motif is too close to canvas edge (must be at least 1 grid unit from edge)',
+        severity: 'warning',
+        element: 'motif'
+      });
+    }
+
     return {
       status: issues.some(i => i.severity === 'critical') ? 'FAIL' :
-              issues.some(i => i.severity === 'warning') ? 'WARNING' : 'PASS',
+        issues.some(i => i.severity === 'warning') ? 'WARNING' : 'PASS',
       issues
     };
   }
@@ -469,30 +507,60 @@ class SwooshChecklist {
       }
     }
 
-    // Check swoosh dimensions (≤ shortest side of window, ≤ 0.5× window height)
+    // Check swoosh dimensions (<= shortest side of window, <= 0.5x window height)
     if (motif) {
       const motifShortSide = Math.min(motif.width * motif.scaleX, motif.height * motif.scaleY);
       const swooshWidth = swoosh.width * swoosh.scaleX;
       if (swooshWidth > motifShortSide * 1.2) {
         issues.push({ message: 'Swoosh width exceeds motif short side', severity: 'warning', element: 'swoosh' });
       }
+
+      const motifHeight = motif.height * motif.scaleY;
+      const swooshHeight = swoosh.height * swoosh.scaleY;
+      if (swooshHeight > motifHeight * 0.5) {
+        issues.push({ message: 'Swoosh height exceeds 0.5x window height', severity: 'warning', element: 'swoosh' });
+      }
+    }
+
+    // NEW: Check swoosh is horizontal-only (0° angle)
+    if (swoosh.angle !== 0 && swoosh.angle !== 180) {
+      issues.push({
+        message: 'Swoosh must be horizontal only (0° angle)',
+        severity: 'warning',
+        element: 'swoosh'
+      });
     }
 
     // Check swoosh doesn't overlap typography
     const headline = canvasManager.objects.headline;
     if (headline && swoosh) {
       const overlap = !(swoosh.left + swoosh.width * swoosh.scaleX < headline.left ||
-                      swoosh.left > headline.left + headline.width * headline.scaleX ||
-                      swoosh.top + swoosh.height * swoosh.scaleY < headline.top ||
-                      swoosh.top > headline.top + headline.height * headline.scaleY);
+          swoosh.left > headline.left + headline.width * headline.scaleX ||
+          swoosh.top + swoosh.height * swoosh.scaleY < headline.top ||
+          swoosh.top > headline.top + headline.height * headline.scaleY);
       if (overlap) {
         issues.push({ message: 'Swoosh overlaps headline text', severity: 'warning', element: 'swoosh' });
       }
     }
 
+    // NEW: Check swoosh doesn't touch canvas edge
+    if (grid) {
+      const safeMargin = grid.margin + grid.cellWidth;
+      if (swoosh.left < safeMargin ||
+          swoosh.left + swoosh.width * swoosh.scaleX > grid.canvasWidth - safeMargin ||
+          swoosh.top < safeMargin ||
+          swoosh.top + swoosh.height * swoosh.scaleY > grid.canvasHeight - safeMargin) {
+        issues.push({
+          message: 'Swoosh is too close to canvas edge',
+          severity: 'info',
+          element: 'swoosh'
+        });
+      }
+    }
+
     return {
       status: issues.some(i => i.severity === 'critical') ? 'FAIL' :
-              issues.some(i => i.severity === 'warning') ? 'WARNING' : 'PASS',
+        issues.some(i => i.severity === 'warning') ? 'WARNING' : 'PASS',
       issues
     };
   }
@@ -531,7 +599,7 @@ class ImageChecklist {
 
     return {
       status: issues.some(i => i.severity === 'critical') ? 'FAIL' :
-              issues.some(i => i.severity === 'warning') ? 'WARNING' : 'PASS',
+        issues.some(i => i.severity === 'warning') ? 'WARNING' : 'PASS',
       issues
     };
   }
@@ -587,7 +655,7 @@ class TreatmentChecklist {
 
     return {
       status: issues.some(i => i.severity === 'critical') ? 'FAIL' :
-              issues.some(i => i.severity === 'warning') ? 'WARNING' : 'PASS',
+        issues.some(i => i.severity === 'warning') ? 'WARNING' : 'PASS',
       issues
     };
   }
@@ -635,7 +703,7 @@ class AccessibilityChecklist {
 
     return {
       status: issues.some(i => i.severity === 'critical') ? 'FAIL' :
-              issues.some(i => i.severity === 'warning') ? 'WARNING' : 'PASS',
+        issues.some(i => i.severity === 'warning') ? 'WARNING' : 'PASS',
       issues
     };
   }
@@ -699,7 +767,7 @@ class CompositionChecklist {
 
     return {
       status: issues.some(i => i.severity === 'critical') ? 'FAIL' :
-              issues.some(i => i.severity === 'warning') ? 'WARNING' : 'PASS',
+        issues.some(i => i.severity === 'warning') ? 'WARNING' : 'PASS',
       issues
     };
   }
@@ -730,7 +798,7 @@ class ExportChecklist {
 
     return {
       status: issues.some(i => i.severity === 'critical') ? 'FAIL' :
-              issues.some(i => i.severity === 'warning') ? 'WARNING' : 'PASS',
+        issues.some(i => i.severity === 'warning') ? 'WARNING' : 'PASS',
       issues
     };
   }

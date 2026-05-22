@@ -1,274 +1,311 @@
 /**
- * Observable State Manager
- * Lightweight reactive state system for vanilla JS
- * Path-based state access, batch updates, localStorage persistence
+ * State Manager
+ * Centralized state management with pub/sub
+ * FIXED: Enforces logo locked state, prevents logo position mutation
  */
 
 class StateManager {
   constructor() {
     this.state = {
-      // Navigation
-      currentStep: 'explore', // explore | compose | refine | export
-      completedSteps: [],
-
-      // Explore step
-      headline: '',
-      subheading: '',
-      backgroundImage: null,
-      backgroundImageDataUrl: null,
-
-      // Compose step
-      selectedPreset: null,
-      customDimensions: null,
-
-      // Refine step
       composition: {
-        canvasWidth: 0,
-        canvasHeight: 0,
-        grid: null,
-        elements: {},
-        treatment: {
-          id: 'blue-multiply',
-          color: '#1E49E2',
-          blendMode: 'multiply',
-          opacity: 0.85,
-          darkTone: '#1E49E2',
-          lightTone: '#5FD7FF'
-        },
+        logo: null,
+        tagline: null,
+        metadata: null,
         motif: null,
-        swoosh: null
+        headline: null,
+        subheading: null,
+        swoosh: null,
+        treatment: null,
+        background: null,
+        lastModified: null
       },
-
-      // Analysis
+      typographyComposition: null,
       imageAnalysis: null,
-      placements: null,
-
-      // Brand check
-      brandScore: 0,
-      checklistStatus: {
-        logo: 'pending',
-        colors: 'pending',
-        typography: 'pending',
-        imagery: 'pending',
-        layout: 'pending'
-      },
-
-      // Export
+      complianceReport: null,
+      complianceStatus: 'PASS',
+      checklistStatus: {},
       exportFormat: 'png',
-      exportQuality: 95,
       exportDpi: 300,
-
-      // Editing
-      editMode: 'auto', // auto | manual
-      selectedElement: null,
-      dragState: null,
-
-      // UI
-      loading: false,
-      loadingText: '',
-      loadingPercent: 0
+      exportQuality: 95,
+      orchestration: {
+        state: 'IDLE',
+        stage: 0,
+        totalStages: 12
+      },
+      history: [],
+      historyIndex: -1,
+      maxHistory: 50
     };
 
-    this.listeners = new Map();
-    this.batchQueue = new Set();
-    this.rafId = null;
-    this.persistKey = 'bce_state_v1';
-
-    // Hydrate from localStorage
-    this.hydrate();
+    this.subscribers = {};
+    this.batchUpdate = false;
+    this.pendingUpdates = [];
   }
 
   /**
-   * Get state at path
+   * Get state value by path
    */
   get(path) {
-    if (!path) return this.state;
-    const parts = path.split('.');
+    const keys = path.split('.');
     let current = this.state;
-    for (const part of parts) {
-      if (current === null || current === undefined) return undefined;
-      current = current[part];
+
+    for (const key of keys) {
+      if (current === undefined || current === null) {
+        return undefined;
+      }
+      current = current[key];
     }
+
     return current;
   }
 
   /**
-   * Set state at path (triggers reactive update)
+   * Set state value by path
+   * FIXED: Prevents mutation of locked logo position
    */
   set(path, value) {
-    const parts = path.split('.');
+    // BRAND GUARD: Prevent logo position mutation
+    if (path === 'composition.logo' || path.startsWith('composition.logo.')) {
+      const currentLogo = this.state.composition.logo;
+      if (currentLogo && currentLogo.locked) {
+        // Only allow setting locked property itself, not position
+        if (path !== 'composition.logo.locked' && !path.includes('locked')) {
+          console.warn('BRAND VIOLATION: Attempted to mutate locked logo position. Operation blocked.');
+          return false;
+        }
+      }
+    }
+
+    // BRAND GUARD: Prevent tagline position mutation
+    if (path === 'composition.tagline' || path.startsWith('composition.tagline.')) {
+      const currentTagline = this.state.composition.tagline;
+      if (currentTagline && currentTagline.locked) {
+        if (path !== 'composition.tagline.locked' && !path.includes('locked')) {
+          console.warn('BRAND VIOLATION: Attempted to mutate locked tagline position. Operation blocked.');
+          return false;
+        }
+      }
+    }
+
+    // BRAND GUARD: Prevent metadata position mutation
+    if (path === 'composition.metadata' || path.startsWith('composition.metadata.')) {
+      const currentMetadata = this.state.composition.metadata;
+      if (currentMetadata && currentMetadata.locked) {
+        if (path !== 'composition.metadata.locked' && !path.includes('locked')) {
+          console.warn('BRAND VIOLATION: Attempted to mutate locked metadata position. Operation blocked.');
+          return false;
+        }
+      }
+    }
+
+    const keys = path.split('.');
     let current = this.state;
-    for (let i = 0; i < parts.length - 1; i++) {
-      if (!(parts[i] in current) || typeof current[parts[i]] !== 'object') {
-        current[parts[i]] = {};
+
+    for (let i = 0; i < keys.length - 1; i++) {
+      if (!current[keys[i]]) {
+        current[keys[i]] = {};
       }
-      current = current[parts[i]];
+      current = current[keys[i]];
     }
 
-    const oldValue = current[parts[parts.length - 1]];
-    current[parts[parts.length - 1]] = value;
+    const oldValue = current[keys[keys.length - 1]];
+    current[keys[keys.length - 1]] = value;
 
-    // Queue notification
-    this.batchQueue.add(path);
-
-    // Notify on next frame
-    if (!this.rafId) {
-      this.rafId = requestAnimationFrame(() => this.flushBatch());
+    if (!this.batchUpdate) {
+      this.notify(path, value, oldValue);
+    } else {
+      this.pendingUpdates.push({ path, value, oldValue });
     }
 
-    return oldValue;
-  }
-
-  /**
-   * Batch update multiple paths
-   */
-  batchUpdate(updates) {
-    for (const [path, value] of Object.entries(updates)) {
-      const parts = path.split('.');
-      let current = this.state;
-      for (let i = 0; i < parts.length - 1; i++) {
-        if (!(parts[i] in current) || typeof current[parts[i]] !== 'object') {
-          current[parts[i]] = {};
-        }
-        current = current[parts[i]];
-      }
-      current[parts[parts.length - 1]] = value;
-      this.batchQueue.add(path);
-    }
-
-    if (!this.rafId) {
-      this.rafId = requestAnimationFrame(() => this.flushBatch());
-    }
-  }
-
-  /**
-   * Flush batched notifications
-   */
-  flushBatch() {
-    this.rafId = null;
-    const paths = Array.from(this.batchQueue);
-    this.batchQueue.clear();
-
-    // Collect all affected listeners
-    const notified = new Set();
-
-    for (const path of paths) {
-      // Notify exact path listeners
-      const exact = this.listeners.get(path);
-      if (exact) {
-        for (const cb of exact) {
-          if (!notified.has(cb)) {
-            notified.add(cb);
-            cb(this.get(path), path);
-          }
-        }
-      }
-
-      // Notify parent path listeners
-      const parts = path.split('.');
-      for (let i = 1; i < parts.length; i++) {
-        const parentPath = parts.slice(0, i).join('.');
-        const parentListeners = this.listeners.get(parentPath);
-        if (parentListeners) {
-          for (const cb of parentListeners) {
-            if (!notified.has(cb)) {
-              notified.add(cb);
-              cb(this.get(parentPath), parentPath);
-            }
-          }
-        }
-      }
-
-      // Notify wildcard listeners
-      const wildcard = this.listeners.get('*');
-      if (wildcard) {
-        for (const cb of wildcard) {
-          if (!notified.has(cb)) {
-            notified.add(cb);
-            cb(this.state, path);
-          }
-        }
-      }
-    }
-
-    // Persist after batch
-    this.persist();
+    return true;
   }
 
   /**
    * Subscribe to state changes
    */
   subscribe(path, callback) {
-    if (!this.listeners.has(path)) {
-      this.listeners.set(path, new Set());
+    if (!this.subscribers[path]) {
+      this.subscribers[path] = [];
     }
-    this.listeners.get(path).add(callback);
+    this.subscribers[path].push(callback);
 
     // Return unsubscribe function
     return () => {
-      this.listeners.get(path)?.delete(callback);
+      const index = this.subscribers[path].indexOf(callback);
+      if (index > -1) {
+        this.subscribers[path].splice(index, 1);
+      }
     };
   }
 
   /**
-   * Subscribe once
+   * Notify subscribers
    */
-  subscribeOnce(path, callback) {
-    const unsubscribe = this.subscribe(path, (value, p) => {
-      callback(value, p);
-      unsubscribe();
-    });
-    return unsubscribe;
-  }
-
-  /**
-   * Persist to localStorage
-   */
-  persist() {
-    try {
-      // Don't persist large binary data
-      const persistable = { ...this.state };
-      delete persistable.backgroundImage; // DOM element
-      delete persistable.composition.grid; // Complex object
-      delete persistable.composition.elements; // Fabric objects
-      delete persistable.imageAnalysis; // Large object
-
-      localStorage.setItem(this.persistKey, JSON.stringify(persistable));
-    } catch (e) {
-      console.warn('State persistence failed:', e);
-    }
-  }
-
-  /**
-   * Hydrate from localStorage
-   */
-  hydrate() {
-    try {
-      const saved = localStorage.getItem(this.persistKey);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        // Merge carefully, preserving defaults for missing keys
-        this.deepMerge(this.state, parsed);
-      }
-    } catch (e) {
-      console.warn('State hydration failed:', e);
-    }
-  }
-
-  /**
-   * Deep merge objects
-   */
-  deepMerge(target, source) {
-    for (const key in source) {
-      if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
-        if (!target[key] || typeof target[key] !== 'object') {
-          target[key] = {};
+  notify(path, newValue, oldValue) {
+    // Notify exact path subscribers
+    if (this.subscribers[path]) {
+      this.subscribers[path].forEach(cb => {
+        try {
+          cb(newValue, oldValue, path);
+        } catch (error) {
+          console.error('Subscriber error:', error);
         }
-        this.deepMerge(target[key], source[key]);
-      } else {
-        target[key] = source[key];
-      }
+      });
     }
+
+    // Notify parent path subscribers
+    const parentPath = path.substring(0, path.lastIndexOf('.'));
+    if (parentPath && this.subscribers[parentPath]) {
+      this.subscribers[parentPath].forEach(cb => {
+        try {
+          cb(this.get(parentPath), null, parentPath);
+        } catch (error) {
+          console.error('Parent subscriber error:', error);
+        }
+      });
+    }
+
+    // Notify wildcard subscribers
+    if (this.subscribers['*']) {
+      this.subscribers['*'].forEach(cb => {
+        try {
+          cb(newValue, oldValue, path);
+        } catch (error) {
+          console.error('Wildcard subscriber error:', error);
+        }
+      });
+    }
+  }
+
+  /**
+   * Batch updates
+   */
+  batch(fn) {
+    this.batchUpdate = true;
+    this.pendingUpdates = [];
+
+    try {
+      fn();
+    } finally {
+      this.batchUpdate = false;
+
+      // Notify all pending updates
+      this.pendingUpdates.forEach(update => {
+        this.notify(update.path, update.value, update.oldValue);
+      });
+
+      this.pendingUpdates = [];
+    }
+  }
+
+  /**
+   * Save state to history
+   */
+  saveToHistory() {
+    const snapshot = JSON.parse(JSON.stringify(this.state));
+
+    // Remove from current index forward (if we undid)
+    if (this.state.historyIndex < this.state.history.length - 1) {
+      this.state.history = this.state.history.slice(0, this.state.historyIndex + 1);
+    }
+
+    this.state.history.push(snapshot);
+
+    // Limit history size
+    if (this.state.history.length > this.state.maxHistory) {
+      this.state.history.shift();
+    } else {
+      this.state.historyIndex++;
+    }
+  }
+
+  /**
+   * Undo
+   */
+  undo() {
+    if (this.state.historyIndex > 0) {
+      this.state.historyIndex--;
+      const snapshot = this.state.history[this.state.historyIndex];
+      this.restoreState(snapshot);
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Redo
+   */
+  redo() {
+    if (this.state.historyIndex < this.state.history.length - 1) {
+      this.state.historyIndex++;
+      const snapshot = this.state.history[this.state.historyIndex];
+      this.restoreState(snapshot);
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Restore state from snapshot
+   */
+  restoreState(snapshot) {
+    // Preserve locked element positions
+    const lockedPositions = {
+      logo: this.state.composition.logo ? {
+        x: this.state.composition.logo.x,
+        y: this.state.composition.logo.y,
+        locked: this.state.composition.logo.locked
+      } : null,
+      tagline: this.state.composition.tagline ? {
+        x: this.state.composition.tagline.x,
+        y: this.state.composition.tagline.y,
+        locked: this.state.composition.tagline.locked
+      } : null,
+      metadata: this.state.composition.metadata ? {
+        x: this.state.composition.metadata.x,
+        y: this.state.composition.metadata.y,
+        locked: this.state.composition.metadata.locked
+      } : null
+    };
+
+    this.state = JSON.parse(JSON.stringify(snapshot));
+
+    // Restore locked positions
+    if (lockedPositions.logo && this.state.composition.logo) {
+      this.state.composition.logo.x = lockedPositions.logo.x;
+      this.state.composition.logo.y = lockedPositions.logo.y;
+      this.state.composition.logo.locked = true;
+    }
+    if (lockedPositions.tagline && this.state.composition.tagline) {
+      this.state.composition.tagline.x = lockedPositions.tagline.x;
+      this.state.composition.tagline.y = lockedPositions.tagline.y;
+      this.state.composition.tagline.locked = true;
+    }
+    if (lockedPositions.metadata && this.state.composition.metadata) {
+      this.state.composition.metadata.x = lockedPositions.metadata.x;
+      this.state.composition.metadata.y = lockedPositions.metadata.y;
+      this.state.composition.metadata.locked = true;
+    }
+
+    // Notify all subscribers
+    Object.keys(this.subscribers).forEach(path => {
+      if (this.subscribers[path]) {
+        this.subscribers[path].forEach(cb => {
+          try {
+            cb(this.get(path), null, path);
+          } catch (error) {
+            console.error('Restore subscriber error:', error);
+          }
+        });
+      }
+    });
+  }
+
+  /**
+   * Get full state
+   */
+  getState() {
+    return JSON.parse(JSON.stringify(this.state));
   }
 
   /**
@@ -276,94 +313,93 @@ class StateManager {
    */
   reset() {
     this.state = {
-      currentStep: 'explore',
-      completedSteps: [],
-      headline: '',
-      subheading: '',
-      backgroundImage: null,
-      backgroundImageDataUrl: null,
-      selectedPreset: null,
-      customDimensions: null,
       composition: {
-        canvasWidth: 0,
-        canvasHeight: 0,
-        grid: null,
-        elements: {},
-        treatment: {
-          id: 'blue-multiply',
-          color: '#1E49E2',
-          blendMode: 'multiply',
-          opacity: 0.85,
-          darkTone: '#1E49E2',
-          lightTone: '#5FD7FF'
-        },
+        logo: null,
+        tagline: null,
+        metadata: null,
         motif: null,
-        swoosh: null
+        headline: null,
+        subheading: null,
+        swoosh: null,
+        treatment: null,
+        background: null,
+        lastModified: null
       },
+      typographyComposition: null,
       imageAnalysis: null,
-      placements: null,
-      brandScore: 0,
-      checklistStatus: {
-        logo: 'pending',
-        colors: 'pending',
-        typography: 'pending',
-        imagery: 'pending',
-        layout: 'pending'
-      },
+      complianceReport: null,
+      complianceStatus: 'PASS',
+      checklistStatus: {},
       exportFormat: 'png',
-      exportQuality: 95,
       exportDpi: 300,
-      editMode: 'auto',
-      selectedElement: null,
-      dragState: null,
-      loading: false,
-      loadingText: '',
-      loadingPercent: 0
+      exportQuality: 95,
+      orchestration: {
+        state: 'IDLE',
+        stage: 0,
+        totalStages: 12
+      },
+      history: [],
+      historyIndex: -1,
+      maxHistory: 50
     };
-    this.listeners.clear();
-    this.batchQueue.clear();
-    if (this.rafId) {
-      cancelAnimationFrame(this.rafId);
-      this.rafId = null;
-    }
-    localStorage.removeItem(this.persistKey);
+
+    this.subscribers = {};
   }
 
   /**
-   * Go to step
+   * Export state as JSON
    */
-  goToStep(step) {
-    const steps = ['explore', 'compose', 'refine', 'export'];
-    const currentIndex = steps.indexOf(this.state.currentStep);
-    const targetIndex = steps.indexOf(step);
+  exportState() {
+    return JSON.stringify(this.state, null, 2);
+  }
 
-    // Mark previous steps as completed
-    for (let i = 0; i < targetIndex; i++) {
-      if (!this.state.completedSteps.includes(steps[i])) {
-        this.state.completedSteps.push(steps[i]);
+  /**
+   * Import state from JSON
+   */
+  importState(json) {
+    try {
+      const parsed = JSON.parse(json);
+
+      // Preserve locked positions
+      const lockedPositions = {
+        logo: this.state.composition.logo?.locked ? {
+          x: this.state.composition.logo.x,
+          y: this.state.composition.logo.y
+        } : null,
+        tagline: this.state.composition.tagline?.locked ? {
+          x: this.state.composition.tagline.x,
+          y: this.state.composition.tagline.y
+        } : null,
+        metadata: this.state.composition.metadata?.locked ? {
+          x: this.state.composition.metadata.x,
+          y: this.state.composition.metadata.y
+        } : null
+      };
+
+      this.state = parsed;
+
+      // Restore locked positions
+      if (lockedPositions.logo) {
+        this.state.composition.logo.x = lockedPositions.logo.x;
+        this.state.composition.logo.y = lockedPositions.logo.y;
+        this.state.composition.logo.locked = true;
       }
+      if (lockedPositions.tagline) {
+        this.state.composition.tagline.x = lockedPositions.tagline.x;
+        this.state.composition.tagline.y = lockedPositions.tagline.y;
+        this.state.composition.tagline.locked = true;
+      }
+      if (lockedPositions.metadata) {
+        this.state.composition.metadata.x = lockedPositions.metadata.x;
+        this.state.composition.metadata.y = lockedPositions.metadata.y;
+        this.state.composition.metadata.locked = true;
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Failed to import state:', error);
+      return false;
     }
-
-    this.set('currentStep', step);
-  }
-
-  /**
-   * Can go to step
-   */
-  canGoToStep(step) {
-    const steps = ['explore', 'compose', 'refine', 'export'];
-    const targetIndex = steps.indexOf(step);
-
-    // Can always go to current or previous steps
-    const currentIndex = steps.indexOf(this.state.currentStep);
-    if (targetIndex <= currentIndex) return true;
-
-    // Can go to next step if current is completed
-    if (targetIndex === currentIndex + 1) {
-      return this.state.completedSteps.includes(steps[currentIndex]);
-    }
-
-    return false;
   }
 }
 

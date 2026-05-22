@@ -1,308 +1,477 @@
 /**
- * Constraint Engine — Phase 3B
- * Soft constraint system with elastic snapping, magnetic feel,
- * and soft boundaries for manual editing mode.
+ * Constraint Engine — Phase 3C
+ * Soft constraints, elastic snap, and magnetic feel for brand-compliant editing
+ * FIXED: Logo completely removed from editable elements (locked top-left)
  */
 
 class ConstraintEngine {
-  constructor(gridSystem) {
+  constructor(canvas, gridSystem, stateManager) {
+    this.canvas = canvas;
     this.gridSystem = gridSystem;
-    this.stiffness = 0.6; // Elastic resistance stiffness (0-1)
-    this.magneticRadius = 0.3; // Grid cell fraction for magnetic snap
+    this.stateManager = stateManager;
+
+    // Constraint parameters
+    this.snapRadius = 30;
+    this.elasticStrength = 0.3;
+    this.magneticThreshold = 50;
+    this.baselineSnapStrength = 0.5;
+
+    // Track which elements are being dragged
+    this.draggingElement = null;
+    this.dragStartPos = null;
+    this.lastValidPos = null;
+
+    // Constraint zones
+    this.zones = this.buildConstraintZones();
+
+    this.setupEventListeners();
   }
 
   /**
-   * Snap to grid with easing (soft magnetic feel)
+   * Build constraint zones from grid system
    */
-  snapToGrid(x, y, elementType = 'generic') {
-    if (!this.gridSystem) return { x, y };
-
+  buildConstraintZones() {
     const grid = this.gridSystem;
-    const col = (x - grid.margin) / (grid.cellWidth + grid.gutter);
-    const row = (y - grid.margin) / (grid.cellHeight + grid.gutter);
+    if (!grid) return {};
 
-    const nearestCol = Math.round(col);
-    const nearestRow = Math.round(row);
+    // Logo zone (TOP-LEFT, LOCKED - not in editable zones)
+    const logoZone = grid.getLogoZone();
 
-    const snapX = grid.margin + nearestCol * (grid.cellWidth + grid.gutter);
-    const snapY = grid.margin + nearestRow * (grid.cellHeight + grid.gutter);
+    // Motif safe zone (must not overlap logo + 2 grid units safety)
+    const motifSafeZone = {
+      x: logoZone.x + logoZone.width + grid.cellWidth * 2,
+      y: logoZone.y + logoZone.height + grid.cellHeight * 2,
+      width: grid.canvasWidth - (logoZone.x + logoZone.width + grid.cellWidth * 2) - grid.margin,
+      height: grid.canvasHeight - (logoZone.y + logoZone.height + grid.cellHeight * 2) - grid.margin
+    };
 
-    const distX = Math.abs(x - snapX);
-    const distY = Math.abs(y - snapY);
+    // Typography safe zones
+    const textZones = grid.getSafeTextRegions();
 
-    const radiusX = grid.cellWidth * this.magneticRadius;
-    const radiusY = grid.cellHeight * this.magneticRadius;
-
-    let resultX = x;
-    let resultY = y;
-
-    // Magnetic snap with smoothstep easing
-    if (distX < radiusX) {
-      const t = distX / radiusX;
-      const eased = t * t * (3 - 2 * t); // smoothstep
-      resultX = snapX + (x - snapX) * eased;
-    }
-
-    if (distY < radiusY) {
-      const t = distY / radiusY;
-      const eased = t * t * (3 - 2 * t);
-      resultY = snapY + (y - snapY) * eased;
-    }
-
-    return { x: resultX, y: resultY };
-  }
-
-  /**
-   * Snap Y coordinate to baseline grid
-   */
-  snapToBaseline(y) {
-    if (!this.gridSystem) return y;
-    return this.gridSystem.snapToBaseline(y);
-  }
-
-  /**
-   * Constrain position to safe margins with elastic resistance
-   */
-  constrainToMargins(x, y, w, h) {
-    if (!this.gridSystem) return { x, y };
-
-    const grid = this.gridSystem;
-    const margin = grid.margin;
-    const maxX = grid.canvasWidth - margin - w;
-    const maxY = grid.canvasHeight - margin - h;
+    // Swoosh attachment zones (left/right of motif)
+    const swooshZones = {
+      left: { x: 0, y: 0, width: grid.cellWidth * 2, height: 0 },
+      right: { x: 0, y: 0, width: grid.cellWidth * 2, height: 0 }
+    };
 
     return {
-      x: this.applyElasticResistance(x, margin, maxX, this.stiffness),
-      y: this.applyElasticResistance(y, margin, maxY, this.stiffness)
+      logo: logoZone,
+      motifSafe: motifSafeZone,
+      text: textZones,
+      swoosh: swooshZones,
+      margin: grid.margin,
+      safeZone: grid.getSafeZone()
     };
   }
 
   /**
-   * Constrain motif to respect logo zone and other brand elements
+   * Setup canvas event listeners
    */
-  constrainMotif(x, y, w, h, logoZone) {
-    if (!this.gridSystem) return { x, y };
-
-    const grid = this.gridSystem;
-    let result = { x, y };
-
-    // Must not overlap logo zone (2 grid unit safety)
-    if (logoZone) {
-      const safeLogoX = logoZone.x + logoZone.width + grid.cellWidth * 2;
-      const safeLogoY = logoZone.y + logoZone.height + grid.cellHeight * 2;
-
-      if (x < safeLogoX && y < safeLogoY) {
-        // Push away from logo zone
-        const pushX = safeLogoX - x;
-        const pushY = safeLogoY - y;
-        if (pushX < pushY) {
-          result.x = this.applyElasticResistance(x, safeLogoX, grid.canvasWidth - grid.margin - w, this.stiffness);
-        } else {
-          result.y = this.applyElasticResistance(y, safeLogoY, grid.canvasHeight - grid.margin - h, this.stiffness);
-        }
-      }
-    }
-
-    // Must respect margins
-    result = this.constrainToMargins(result.x, result.y, w, h);
-
-    return result;
+  setupEventListeners() {
+    this.canvas.on('object:moving', (e) => this.onObjectMoving(e));
+    this.canvas.on('object:modified', (e) => this.onObjectModified(e));
+    this.canvas.on('object:moved', (e) => this.onObjectMoved(e));
+    this.canvas.on('object:scaling', (e) => this.onObjectScaling(e));
+    this.canvas.on('object:rotating', (e) => this.onObjectRotating(e));
   }
 
   /**
-   * Constrain typography to safe text regions
+   * Handle object moving
    */
-  constrainTypography(x, y, w, h, motif, logoZone) {
-    if (!this.gridSystem) return { x, y };
+  onObjectMoving(e) {
+    const obj = e.target;
+    if (!obj) return;
 
-    const grid = this.gridSystem;
-    let result = { x, y };
-
-    // Must not overlap motif window (1 grid unit safety)
-    if (motif) {
-      const safeMotifX = motif.x - grid.cellWidth;
-      const safeMotifRight = motif.x + motif.width + grid.cellWidth;
-      const safeMotifY = motif.y - grid.cellHeight;
-      const safeMotifBottom = motif.y + motif.height + grid.cellHeight;
-
-      // Check overlap
-      const overlapX = !(x + w < safeMotifX || x > safeMotifRight);
-      const overlapY = !(y + h < safeMotifY || y > safeMotifBottom);
-
-      if (overlapX && overlapY) {
-        // Determine which direction to push
-        const leftDist = Math.abs(x + w - safeMotifX);
-        const rightDist = Math.abs(x - safeMotifRight);
-        const topDist = Math.abs(y + h - safeMotifY);
-        const bottomDist = Math.abs(y - safeMotifBottom);
-
-        const minDist = Math.min(leftDist, rightDist, topDist, bottomDist);
-
-        if (minDist === leftDist) {
-          result.x = safeMotifX - w - grid.cellWidth * 0.5;
-        } else if (minDist === rightDist) {
-          result.x = safeMotifRight + grid.cellWidth * 0.5;
-        } else if (minDist === topDist) {
-          result.y = safeMotifY - h - grid.cellHeight * 0.5;
-        } else {
-          result.y = safeMotifBottom + grid.cellHeight * 0.5;
-        }
-      }
+    // FIXED: Logo is completely locked - no movement allowed
+    if (obj.name === 'logo') {
+      // Immediately reset to locked position
+      const logoZone = this.gridSystem.getLogoZone();
+      obj.set({
+        left: logoZone.x,
+        top: logoZone.y,
+        selectable: false,
+        lockMovementX: true,
+        lockMovementY: true,
+        lockRotation: true,
+        lockScalingX: true,
+        lockScalingY: true,
+        hasControls: false,
+        hasBorders: false
+      });
+      obj.setCoords();
+      this.canvas.renderAll();
+      return;
     }
 
-    // Must not overlap logo zone (2 grid units)
-    if (logoZone) {
-      const safeLogoRight = logoZone.x + logoZone.width + grid.cellWidth * 2;
-      const safeLogoBottom = logoZone.y + logoZone.height + grid.cellHeight * 2;
-
-      if (x < safeLogoRight && y < safeLogoBottom) {
-        if (safeLogoRight - x < safeLogoBottom - y) {
-          result.x = Math.max(result.x, safeLogoRight);
-        } else {
-          result.y = Math.max(result.y, safeLogoBottom);
-        }
-      }
+    // Tagline and metadata are also locked
+    if (obj.name === 'tagline' || obj.name === 'metadata') {
+      const zone = obj.name === 'tagline' ? 
+        this.gridSystem.getTaglineZone() : 
+        this.gridSystem.getMetadataZone();
+      obj.set({
+        left: zone.x,
+        top: zone.y,
+        lockMovementX: true,
+        lockMovementY: true,
+        lockRotation: true,
+        lockScalingX: true,
+        lockScalingY: true,
+        hasControls: false,
+        hasBorders: false
+      });
+      obj.setCoords();
+      this.canvas.renderAll();
+      return;
     }
 
-    // Baseline snap for text
-    result.y = this.snapToBaseline(result.y);
+    this.draggingElement = obj.name;
+    if (!this.dragStartPos) {
+      this.dragStartPos = { x: obj.left, y: obj.top };
+    }
 
-    // Margin constraints
-    result = this.constrainToMargins(result.x, result.y, w, h);
+    // Apply constraints
+    this.applyConstraints(obj);
 
-    return result;
+    // Update state
+    this.stateManager.set('composition.lastModified', Date.now());
   }
 
   /**
-   * Apply elastic resistance (soft push-back beyond boundaries)
+   * Handle object modified (drag end)
    */
-  applyElasticResistance(value, min, max, stiffness) {
-    if (value >= min && value <= max) return value;
+  onObjectModified(e) {
+    const obj = e.target;
+    if (!obj || obj.name === 'logo' || obj.name === 'tagline' || obj.name === 'metadata') return;
 
-    const boundary = value < min ? min : max;
-    const overflow = value < min ? min - value : value - max;
+    // Snap to final position
+    this.finalSnap(obj);
 
-    // Elastic formula: resistance increases with distance
-    const resistance = 1 - Math.exp(-overflow * stiffness * 0.1);
-    const elasticOverflow = overflow * resistance;
-
-    return value < min ? boundary - elasticOverflow : boundary + elasticOverflow;
-  }
-
-  /**
-   * Calculate magnetic snap feel for multiple snap points
-   */
-  calculateMagneticSnap(value, snapPoints, radius) {
-    let closestDist = Infinity;
-    let closestPoint = value;
-
-    for (const point of snapPoints) {
-      const dist = Math.abs(value - point);
-      if (dist < radius && dist < closestDist) {
-        closestDist = dist;
-        closestPoint = point;
-      }
-    }
-
-    if (closestDist < radius) {
-      const t = closestDist / radius;
-      const eased = t * t * (3 - 2 * t);
-      return closestPoint + (value - closestPoint) * eased;
-    }
-
-    return value;
-  }
-
-  /**
-   * Get constraint visualization data (for UI feedback)
-   */
-  getConstraintVisuals(elementName, x, y, w, h) {
-    const visuals = [];
-    const grid = this.gridSystem;
-    if (!grid) return visuals;
-
-    // Margin boundaries
-    visuals.push({
-      type: 'boundary',
-      x: grid.margin,
-      y: grid.margin,
-      width: grid.canvasWidth - grid.margin * 2,
-      height: grid.canvasHeight - grid.margin * 2,
-      color: 'rgba(0, 51, 141, 0.08)',
-      label: 'Safe margin'
+    // Update state
+    this.stateManager.set('composition.lastModified', Date.now());
+    this.stateManager.set(`composition.${obj.name}`, {
+      x: obj.left,
+      y: obj.top,
+      width: obj.width * obj.scaleX,
+      height: obj.height * obj.scaleY,
+      angle: obj.angle
     });
 
-    // Logo safe zone
-    const logoZone = grid.getLogoZone();
-    visuals.push({
-      type: 'exclusion',
-      x: logoZone.x,
-      y: logoZone.y,
-      width: logoZone.width + grid.cellWidth * 2,
-      height: logoZone.height + grid.cellHeight * 2,
-      color: 'rgba(239, 68, 68, 0.06)',
-      label: 'Logo safe zone'
-    });
+    // Reset drag tracking
+    this.draggingElement = null;
+    this.dragStartPos = null;
+  }
 
-    return visuals;
+  onObjectMoved(e) {
+    // Alias for modified
+    this.onObjectModified(e);
   }
 
   /**
-   * Check if proposed position violates any hard constraints
+   * Handle object scaling
    */
-  validatePosition(elementName, x, y, w, h, context = {}) {
-    const violations = [];
-    const grid = this.gridSystem;
-    if (!grid) return violations;
+  onObjectScaling(e) {
+    const obj = e.target;
+    if (!obj || obj.name === 'logo' || obj.name === 'tagline' || obj.name === 'metadata') return;
 
-    // Margin violation
-    if (x < grid.margin || y < grid.margin ||
-        x + w > grid.canvasWidth - grid.margin ||
-        y + h > grid.canvasHeight - grid.margin) {
-      violations.push({ type: 'margin', severity: 'hard', message: 'Element exceeds safe margins' });
+    // Constrain scaling to maintain aspect ratio for motif
+    if (obj.name === 'motif') {
+      const ratio = obj.width / obj.height;
+      // Ensure ratio stays close to 7:10 or 10:7
+      const targetRatios = [7/10, 10/7];
+      const currentRatio = (obj.width * obj.scaleX) / (obj.height * obj.scaleY);
+
+      const closestRatio = targetRatios.reduce((closest, r) =>
+        Math.abs(r - currentRatio) < Math.abs(closest - currentRatio) ? r : closest
+      );
+
+      if (Math.abs(currentRatio - closestRatio) > 0.1) {
+        // Snap ratio
+        const newHeight = (obj.width * obj.scaleX) / closestRatio;
+        obj.set({ scaleY: newHeight / obj.height });
+      }
     }
 
-    // Logo overlap (hard constraint)
-    const logoZone = grid.getLogoZone();
-    const logoSafe = {
-      x: logoZone.x,
-      y: logoZone.y,
-      width: logoZone.width + grid.cellWidth * 2,
-      height: logoZone.height + grid.cellHeight * 2
+    // Prevent scaling beyond safe zone
+    const safeZone = this.zones.safeZone;
+    const newWidth = obj.width * obj.scaleX;
+    const newHeight = obj.height * obj.scaleY;
+
+    if (obj.left + newWidth > safeZone.x + safeZone.width) {
+      obj.set({ scaleX: (safeZone.x + safeZone.width - obj.left) / obj.width });
+    }
+    if (obj.top + newHeight > safeZone.y + safeZone.height) {
+      obj.set({ scaleY: (safeZone.y + safeZone.height - obj.top) / obj.height });
+    }
+
+    obj.setCoords();
+  }
+
+  /**
+   * Handle object rotation
+   */
+  onObjectRotating(e) {
+    const obj = e.target;
+    if (!obj || obj.name === 'logo' || obj.name === 'tagline' || obj.name === 'metadata') return;
+
+    // Constrain rotation for swoosh (horizontal only = 0°)
+    if (obj.name === 'swoosh') {
+      const angle = obj.angle % 360;
+      // Snap to 0° or 180° (horizontal)
+      const snapAngles = [0, 180, 360];
+      const closestAngle = snapAngles.reduce((closest, a) =>
+        Math.abs(a - angle) < Math.abs(closest - angle) ? a : closest
+      );
+
+      if (Math.abs(angle - closestAngle) < 15) {
+        obj.set({ angle: closestAngle });
+      }
+    }
+
+    // Prevent rotation for other elements
+    if (obj.name === 'motif' || obj.name === 'headline' || obj.name === 'subheading') {
+      obj.set({ angle: 0 });
+    }
+
+    obj.setCoords();
+  }
+
+  /**
+   * Apply all constraints during drag
+   */
+  applyConstraints(obj) {
+    const grid = this.gridSystem;
+
+    // 1. Safe zone constraint
+    this.constrainToSafeZone(obj);
+
+    // 2. Grid snap with elastic feel
+    this.applyGridSnap(obj);
+
+    // 3. Baseline snap for text
+    if (obj.name === 'headline' || obj.name === 'subheading') {
+      this.applyBaselineSnap(obj);
+    }
+
+    // 4. Logo safe zone (motif must not overlap)
+    if (obj.name === 'motif') {
+      this.constrainMotifFromLogo(obj);
+    }
+
+    // 5. Motif attachment for swoosh
+    if (obj.name === 'swoosh') {
+      this.constrainSwooshToMotif(obj);
+    }
+
+    // 6. Typography safe zones
+    if (obj.name === 'headline' || obj.name === 'subheading') {
+      this.constrainTextToSafeZones(obj);
+    }
+
+    obj.setCoords();
+  }
+
+  /**
+   * Constrain object to safe zone
+   */
+  constrainToSafeZone(obj) {
+    const safeZone = this.zones.safeZone;
+    const margin = this.zones.margin;
+
+    // Left boundary
+    if (obj.left < safeZone.x) {
+      obj.set({ left: safeZone.x });
+    }
+
+    // Top boundary
+    if (obj.top < safeZone.y) {
+      obj.set({ top: safeZone.y });
+    }
+
+    // Right boundary
+    const rightEdge = obj.left + obj.width * obj.scaleX;
+    if (rightEdge > safeZone.x + safeZone.width) {
+      obj.set({ left: safeZone.x + safeZone.width - obj.width * obj.scaleX });
+    }
+
+    // Bottom boundary
+    const bottomEdge = obj.top + obj.height * obj.scaleY;
+    if (bottomEdge > safeZone.y + safeZone.height) {
+      obj.set({ top: safeZone.y + safeZone.height - obj.height * obj.scaleY });
+    }
+  }
+
+  /**
+   * Apply grid snap with elastic feel
+   */
+  applyGridSnap(obj) {
+    const grid = this.gridSystem;
+    const snapX = grid.getColumnSnap(obj.left, this.snapRadius);
+    const snapY = grid.getRowSnap(obj.top, this.snapRadius);
+
+    // Elastic interpolation
+    const elasticX = obj.left + (snapX - obj.left) * this.elasticStrength;
+    const elasticY = obj.top + (snapY - obj.top) * this.elasticStrength;
+
+    obj.set({ left: elasticX, top: elasticY });
+  }
+
+  /**
+   * Apply baseline snap for text elements
+   */
+  applyBaselineSnap(obj) {
+    const grid = this.gridSystem;
+    const snapY = grid.snapToBaseline(obj.top);
+    const dist = Math.abs(obj.top - snapY);
+
+    if (dist < this.snapRadius * 0.5) {
+      const elasticY = obj.top + (snapY - obj.top) * this.baselineSnapStrength;
+      obj.set({ top: elasticY });
+    }
+  }
+
+  /**
+   * Constrain motif from logo safe zone
+   */
+  constrainMotifFromLogo(obj) {
+    const logoZone = this.zones.logo;
+    const logoSafeX = logoZone.x + logoZone.width + this.gridSystem.cellWidth * 2;
+    const logoSafeY = logoZone.y + logoZone.height + this.gridSystem.cellHeight * 2;
+
+    // If motif overlaps logo safe zone, push it away
+    const motifRight = obj.left + obj.width * obj.scaleX;
+    const motifBottom = obj.top + obj.height * obj.scaleY;
+
+    if (obj.left < logoSafeX && obj.top < logoSafeY) {
+      // Motif is in logo danger zone - push right or down
+      const pushRight = logoSafeX - obj.left;
+      const pushDown = logoSafeY - obj.top;
+
+      if (pushRight < pushDown) {
+        obj.set({ left: logoSafeX });
+      } else {
+        obj.set({ top: logoSafeY });
+      }
+    }
+  }
+
+  /**
+   * Constrain swoosh to attach to motif
+   */
+  constrainSwooshToMotif(obj) {
+    const motif = this.canvas.getObjects().find(o => o.name === 'motif');
+    if (!motif || !motif.visible) return;
+
+    const motifLeft = motif.left;
+    const motifRight = motif.left + motif.width * motif.scaleX;
+    const motifCenterY = motif.top + motif.height * motif.scaleY / 2;
+
+    const swooshCenterX = obj.left + obj.width * obj.scaleX / 2;
+    const distToLeft = Math.abs(swooshCenterX - motifLeft);
+    const distToRight = Math.abs(swooshCenterX - motifRight);
+
+    // Magnetic snap to motif sides
+    if (distToLeft < this.magneticThreshold || distToRight < this.magneticThreshold) {
+      const snapX = distToLeft < distToRight ? motifLeft : motifRight;
+      const elasticX = obj.left + (snapX - obj.left) * this.elasticStrength;
+      obj.set({ left: elasticX });
+
+      // Align Y to motif center
+      const targetY = motifCenterY - obj.height * obj.scaleY / 2;
+      const elasticY = obj.top + (targetY - obj.top) * this.elasticStrength;
+      obj.set({ top: elasticY });
+    }
+
+    // Constrain swoosh to horizontal (0°)
+    if (obj.angle !== 0 && obj.angle !== 180) {
+      obj.set({ angle: 0 });
+    }
+  }
+
+  /**
+   * Constrain text to safe zones
+   */
+  constrainTextToSafeZones(obj) {
+    const textZones = this.zones.text;
+    if (!textZones || textZones.length === 0) return;
+
+    const objCenter = {
+      x: obj.left + obj.width * obj.scaleX / 2,
+      y: obj.top + obj.height * obj.scaleY / 2
     };
 
-    const overlapLogo = !(x + w < logoSafe.x || x > logoSafe.x + logoSafe.width ||
-                         y + h < logoSafe.y || y > logoSafe.y + logoSafe.height);
-
-    if (overlapLogo && elementName !== 'logo') {
-      violations.push({ type: 'logo', severity: 'hard', message: 'Element overlaps logo safe zone' });
-    }
-
-    // Motif-typography overlap (soft constraint for editable elements)
-    if (context.motif && (elementName === 'headline' || elementName === 'subheading')) {
-      const motifSafe = {
-        x: context.motif.x - grid.cellWidth,
-        y: context.motif.y - grid.cellHeight,
-        width: context.motif.width + grid.cellWidth * 2,
-        height: context.motif.height + grid.cellHeight * 2
-      };
-
-      const overlapMotif = !(x + w < motifSafe.x || x > motifSafe.x + motifSafe.width ||
-                             y + h < motifSafe.y || y > motifSafe.y + motifSafe.height);
-
-      if (overlapMotif) {
-        violations.push({ type: 'motif', severity: 'soft', message: 'Typography too close to motif window' });
+    // Check if in any safe zone
+    let inSafeZone = false;
+    for (const zone of textZones) {
+      if (objCenter.x >= zone.x && objCenter.x <= zone.x + zone.width &&
+          objCenter.y >= zone.y && objCenter.y <= zone.y + zone.height) {
+        inSafeZone = true;
+        break;
       }
     }
 
-    return violations;
+    if (!inSafeZone) {
+      // Push towards nearest safe zone
+      const nearestZone = textZones.reduce((nearest, zone) => {
+        const zoneCenter = {
+          x: zone.x + zone.width / 2,
+          y: zone.y + zone.height / 2
+        };
+        const dist = Math.hypot(objCenter.x - zoneCenter.x, objCenter.y - zoneCenter.y);
+        return dist < nearest.dist ? { zone, dist } : nearest;
+      }, { zone: textZones[0], dist: Infinity });
+
+      const targetX = nearestZone.zone.x + nearestZone.zone.width / 2 - obj.width * obj.scaleX / 2;
+      const targetY = nearestZone.zone.y + nearestZone.zone.height / 2 - obj.height * obj.scaleY / 2;
+
+      obj.set({
+        left: obj.left + (targetX - obj.left) * 0.1,
+        top: obj.top + (targetY - obj.top) * 0.1
+      });
+    }
   }
 
   /**
-   * Update grid system reference (called on canvas resize)
+   * Final snap when drag ends
    */
-  setGridSystem(gridSystem) {
-    this.gridSystem = gridSystem;
+  finalSnap(obj) {
+    const grid = this.gridSystem;
+
+    // Hard snap to grid
+    const snapped = grid.snapToGrid(obj.left, obj.top, obj.width * obj.scaleX, obj.height * obj.scaleY);
+    obj.set({ left: snapped.x, top: snapped.y });
+
+    // Snap to baseline for text
+    if (obj.name === 'headline' || obj.name === 'subheading') {
+      const baselineY = grid.snapToBaseline(obj.top);
+      obj.set({ top: baselineY });
+    }
+
+    // Ensure swoosh is horizontal
+    if (obj.name === 'swoosh') {
+      obj.set({ angle: 0 });
+    }
+
+    obj.setCoords();
+  }
+
+  /**
+   * Update constraint zones when grid changes
+   */
+  updateZones() {
+    this.zones = this.buildConstraintZones();
+  }
+
+  /**
+   * Get constraint info for debugging
+   */
+  getInfo() {
+    return {
+      snapRadius: this.snapRadius,
+      elasticStrength: this.elasticStrength,
+      magneticThreshold: this.magneticThreshold,
+      zones: this.zones,
+      dragging: this.draggingElement
+    };
   }
 }
 

@@ -2,6 +2,7 @@
  * Adaptive Grid System
  * Mathematical grid generation with KPMG brand rules
  * Enhanced with baseline grid, safe zones, typography regions
+ * FIXED: Removed multi-corner logo zones, added metadata spacing, motif edge margin
  */
 
 class GridSystem {
@@ -143,7 +144,7 @@ class GridSystem {
   }
 
   /**
-   * Get logo zone (TOP-LEFT, KPMG brand rule)
+   * Get logo zone (TOP-LEFT, LOCKED per KPMG brand rule)
    * Logo: 2 grid units wide, 1 grid unit tall
    */
   getLogoZone() {
@@ -151,7 +152,7 @@ class GridSystem {
   }
 
   /**
-   * Get tagline zone (BOTTOM-LEFT, KPMG brand rule)
+   * Get tagline zone (BOTTOM-LEFT, LOCKED)
    */
   getTaglineZone() {
     // Position at bottom-left, in margin
@@ -165,16 +166,31 @@ class GridSystem {
   }
 
   /**
-   * Get metadata zone (BOTTOM-RIGHT, KPMG brand rule)
+   * Get metadata zone (BOTTOM-RIGHT, LOCKED)
+   * FIXED: Now returns array of elements with proper 2-grid-unit spacing
    */
   getMetadataZone() {
     const metaHeight = this.cellHeight / 3;
+    const spacing = this.cellWidth * 2; // 2 grid units between elements
+    const elementWidth = this.cellWidth * 3;
+
+    // Calculate starting x position for right-aligned metadata block
+    const totalBlockWidth = elementWidth * 3 + spacing * 2; // 3 elements + 2 gaps
+    const startX = this.canvasWidth - this.margin - totalBlockWidth;
+    const y = this.canvasHeight - this.margin - metaHeight;
+
     return {
-      x: this.canvasWidth - this.margin - 200,
-      y: this.canvasHeight - this.margin - metaHeight,
-      width: 180,
+      x: startX,
+      y: y,
+      width: totalBlockWidth,
       height: metaHeight,
-      align: 'right'
+      align: 'right',
+      spacing: spacing,
+      elements: [
+        { name: 'url', x: startX, width: elementWidth },
+        { name: 'date', x: startX + elementWidth + spacing, width: elementWidth },
+        { name: 'cta', x: startX + (elementWidth + spacing) * 2, width: elementWidth }
+      ]
     };
   }
 
@@ -220,8 +236,8 @@ class GridSystem {
   isInTypographySafeZone(x, y, w, h) {
     const regions = this.getSafeTextRegions();
     for (const region of regions) {
-      if (x >= region.x && y >= region.y && 
-          x + w <= region.x + region.width && 
+      if (x >= region.x && y >= region.y &&
+          x + w <= region.x + region.width &&
           y + h <= region.y + region.height) {
         return true;
       }
@@ -239,7 +255,6 @@ class GridSystem {
     const dist = Math.abs(x - snapX);
 
     if (dist < radius) {
-      // Easing: closer to snap point = stronger pull
       const t = dist / radius;
       const eased = t * t * (3 - 2 * t); // smoothstep
       return snapX + (x - snapX) * eased;
@@ -265,17 +280,10 @@ class GridSystem {
   }
 
   /**
-   * Get corner zones for logo placement
+   * REMOVED: getLogoZones()
+   * KPMG brand rule: Logo is ALWAYS top-left, locked.
+   * No alternative logo positions exist.
    */
-  getLogoZones() {
-    const zoneSize = 3;
-    return [
-      { name: 'top-left', ...this.gridToPixel(0, 0, zoneSize, zoneSize) },
-      { name: 'top-right', ...this.gridToPixel(this.columns - zoneSize, 0, zoneSize, zoneSize) },
-      { name: 'bottom-left', ...this.gridToPixel(0, this.rows - zoneSize, zoneSize, zoneSize) },
-      { name: 'bottom-right', ...this.gridToPixel(this.columns - zoneSize, this.rows - zoneSize, zoneSize, zoneSize) }
-    ];
-  }
 
   /**
    * Get baseline zones for text placement
@@ -337,6 +345,20 @@ class GridSystem {
       y >= this.margin &&
       (x + width) <= (this.canvasWidth - this.margin) &&
       (y + height) <= (this.canvasHeight - this.margin)
+    );
+  }
+
+  /**
+   * Check if motif respects 1-grid-unit margin from canvas edge
+   * NEW: Added per brand guidelines Section 8.3
+   */
+  isMotifEdgeSafe(x, y, width, height) {
+    const safeMargin = this.margin + this.cellWidth; // 1 grid unit from edge
+    return (
+      x >= safeMargin &&
+      y >= safeMargin &&
+      (x + width) <= (this.canvasWidth - safeMargin) &&
+      (y + height) <= (this.canvasHeight - safeMargin)
     );
   }
 
